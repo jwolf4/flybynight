@@ -1,59 +1,110 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Fly By Night</title>
-  <style>
-    body {
-      background: black;
-      color: #00ff00;
-      font-family: monospace;
-      text-align: center;
-      padding-top: 20vh;
-    }
-
-    h1.flicker {
-      font-size: 3em;
-      color: #00ff00;
-      animation: flicker 2s infinite;
-    }
-
-    @keyframes flicker {
-      0% { opacity: 1; }
-      5% { opacity: 0.5; }
-      10% { opacity: 0.3; }
-      15% { opacity: 1; }
-      20% { opacity: 0.6; }
-      25% { opacity: 0.2; }
-      30% { opacity: 1; }
-      100% { opacity: 1; }
-    }
-
-    button {
-      background-color: transparent;
-      border: 2px solid #00ff00;
-      color: #00ff00;
-      font-size: 1.5em;
-      padding: 10px 20px;
-      cursor: pointer;
-      transition: background 0.3s;
-    }
-
-    button:hover {
-      background-color: #00ff00;
-      color: black;
-    }
-  </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fly By Night — Thread Prototype</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h1 class="flicker">Fly By Night</h1>
-  <p>Live in your world, fly in ours</p>
-  <button id="enterBtn">Enter</button>
+  <div class="scanlines"></div>
 
-  <script>
-    document.getElementById("enterBtn").onclick = () => {
-      window.location.href = "/main.html";
-    };
-  </script>
+  <main class="shell">
+    <header class="header">
+      <div class="brand">
+        <h1 class="flicker">Fly By Night</h1>
+        <p class="tagline flicker">Live in your world, <em>Fly in ours.</em></p>
+      </div>
+
+      <div class="status">
+        <div class="status-row">
+          <span class="label">THREAD:</span>
+          <span id="threadStatus" class="value">EMPTY</span>
+        </div>
+        <div class="status-row">
+          <span class="label">REFRESH:</span>
+          <span id="refreshStatus" class="value">every 10s</span>
+        </div>
+        <div class="status-row">
+          <span class="label">LOCAL:</span>
+          <span class="value">memory only</span>
+        </div>
+      </div>
+    </header>
+
+    <section class="panel">
+      <!-- THREAD CREATION (shown only when empty) -->
+      <div id="createThreadBox" class="box">
+        <div class="box-title">Start a thread</div>
+        <form id="createThreadForm" class="form">
+          <label class="field">
+            <span class="field-label">Name (optional)</span>
+            <input id="opName" type="text" maxlength="32" placeholder="Anonymous" />
+          </label>
+
+          <label class="field">
+            <span class="field-label">Comment</span>
+            <textarea id="opComment" rows="5" maxlength="2000" placeholder="Write the OP..."></textarea>
+          </label>
+
+          <label class="field">
+            <span class="field-label">Image (optional)</span>
+            <input id="opImage" type="file" accept="image/*" />
+          </label>
+
+          <div class="actions">
+            <button type="submit" class="btn">Create Thread</button>
+            <button type="button" id="seedDemo" class="btn btn-ghost">Seed Demo</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- THREAD VIEW -->
+      <div id="threadBox" class="box hidden">
+        <div class="box-title">
+          Thread
+          <span class="box-subtitle" id="threadMeta"></span>
+        </div>
+
+        <div id="threadPosts" class="posts"></div>
+
+        <div class="divider"></div>
+
+        <!-- REPLY FORM -->
+        <form id="replyForm" class="form">
+          <div class="form-row">
+            <label class="field">
+              <span class="field-label">Name (optional)</span>
+              <input id="replyName" type="text" maxlength="32" placeholder="Anonymous" />
+            </label>
+
+            <label class="field">
+              <span class="field-label">Image (optional)</span>
+              <input id="replyImage" type="file" accept="image/*" />
+            </label>
+          </div>
+
+          <label class="field">
+            <span class="field-label">Reply</span>
+            <textarea id="replyComment" rows="4" maxlength="2000" placeholder="Use >>123 to quote. Click any No.### to insert."></textarea>
+          </label>
+
+          <div class="actions">
+            <button type="submit" class="btn">Post Reply</button>
+            <button type="button" id="deleteThread" class="btn btn-danger">Delete Thread</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <div class="flicker subtle">
+        <span id="clock"></span>
+        <span class="cursor"></span>
+      </div>
+    </footer>
+  </main>
+
+  <script src="app.js"></script>
 </body>
 </html>
