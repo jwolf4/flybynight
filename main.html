@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Fly By Night - Main</title>
+  <style>
+    body {
+      background: black;
+      color: #00ff00;
+      font-family: monospace;
+      text-align: center;
+      padding-top: 5vh;
+    }
+
+    video {
+      width: 80vw;
+      max-width: 720px;
+      border: 2px solid #00ff00;
+      margin-top: 20px;
+    }
+
+    button {
+      background-color: transparent;
+      border: 2px solid #00ff00;
+      color: #00ff00;
+      font-size: 1.5em;
+      padding: 10px 20px;
+      cursor: pointer;
+      margin-top: 30px;
+    }
+
+    button:hover {
+      background-color: #00ff00;
+      color: black;
+    }
+  </style>
+</head>
+<body>
+  <h1>Fly By Night</h1>
+  <p id="status">Checking slot...</p>
+  <button id="actionBtn" style="display:none;">Start Flying</button>
+  <video id="video" autoplay playsinline muted></video>
+
+  <script>
+    const statusEl = document.getElementById("status");
+    const btn = document.getElementById("actionBtn");
+    const video = document.getElementById("video");
+
+    const ws = new WebSocket(`wss://${location.hostname}/ws`);
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    });
+
+    let isFlyer = false;
+
+    ws.onopen = () => {
+      console.log("[Main] WebSocket open → requesting slot status");
+      ws.send(JSON.stringify({ type: "jack_in", slot: 1 }));
+    };
+
+    ws.onmessage = async ({ data }) => {
+      const msg = JSON.parse(data);
+
+      if (msg.type === "need_offer") {
+        // Someone jacked in before us – become the flyer
+        isFlyer = true;
+        startFlyer();
+      } else if (msg.type === "offer") {
+        // Viewer path
+        console.log("[Main] Received offer → setting remote and sending answer");
+        await pc.setRemoteDescription(new RTCSessionDescription(msg.offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        ws.send(JSON.stringify({ type: "answer", answer, slot: 1 }));
+      } else if (msg.type === "answer") {
+        await pc.setRemoteDescription(new RTCSessionDescription(msg.answer));
+      } else if (msg.type === "ice") {
+        try {
+          await pc.addIceCandidate(msg.candidate);
+        } catch (e) {
+          console.warn("Failed to add ICE:", e);
+        }
+      }
+    };
+
+    pc.ontrack = (event) => {
+      if (!video.srcObject) {
+        console.log("[Main] Received stream → displaying");
+        video.srcObject = event.streams[0];
+      }
+    };
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        ws.send(JSON.stringify({ type: "ice", candidate: event.candidate, slot: 1 }));
+      }
+    };
+
+    function startFlyer() {
+      btn.style.display = "inline-block";
+      statusEl.innerText = "No one is flying.";
+      btn.onclick = async () => {
+        btn.style.display = "none";
+        statusEl.innerText = "Starting your stream...";
+        ws.send(JSON.stringify({ type: "go_live", slot: 1 }));
+
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        video.srcObject = stream;
+        stream.getTracks().forEach(track => pc.addTrack(track, stream));
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        ws.send(JSON.stringify({ type: "offer", offer, slot: 1 }));
+      };
+    }
+  </script>
+</body>
+</html>

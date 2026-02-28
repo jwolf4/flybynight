@@ -1,61 +1,94 @@
 const WebSocket = require('ws');
-
-const wss = new WebSocket.Server({ port: 8080 });
+const server = new WebSocket.Server({ port: 8080 });
+console.log('[server] Fly By Night signaling server running on ws://0.0.0.0:8080');
 
 const slots = {
-  1: null,
-  2: null,
-  3: null,
-  4: null,
-  5: null
+  1: {
+    flyer: null,
+    viewer: null
+  }
 };
 
-wss.on('connection', (ws) => {
-  console.log('New connection');
+server.on('connection', (ws) => {
+  console.log('[server] New WebSocket connection established');
 
-  ws.on('message', (message) => {
-    console.log('Received:', message);
-
-    let msg;
+  ws.on('message', (msg) => {
+    let data;
     try {
-      msg = JSON.parse(message);
+      data = JSON.parse(msg);
     } catch (e) {
-      console.log('Invalid JSON');
+      console.error('[server] Failed to parse message:', msg);
       return;
     }
 
-    if (msg.type === 'go_live') {
-      const slot = msg.slot || 1;  // Default to Slot 1 for now
-      slots[slot] = ws;
-      ws.slot = slot;
-      ws.isFlyer = true;
-      console.log(`Flyer went live in Slot ${slot}`);
-    }
+    const slot = slots[data.slot];
+    if (!slot) return;
 
-    if (msg.type === 'jack_in') {
-      const slot = msg.slot || 1;
-      const flyer = slots[slot];
-      if (flyer) {
-        console.log(`Viewer jacked into Slot ${slot}`);
-        // In a real implementation you'd relay SDP offers/candidates here.
-        flyer.send(JSON.stringify({ type: 'viewer_joined', slot }));
-      } else {
-        console.log(`Viewer tried to jack into empty Slot ${slot}`);
-      }
-    }
+    switch (data.type) {
+      case 'go_live':
+        console.log(`[server] Flyer started in slot ${data.slot}`);
+        slot.flyer = ws;
+        ws.on('close', () => {
+          console.log(`[server] Flyer in slot ${data.slot} disconnected`);
+          slot.flyer = null;
+        });
+        break;
 
-    if (msg.type === 'signal') {
-      // Just log signaling message for now
-      console.log(`Signal message: ${JSON.stringify(msg)}`);
+      case 'jack_in':
+        if (slot.flyer) {
+          console.log(`[server] Viewer jacked into slot ${data.slot}`);
+          slot.viewer = ws;
+          slot.flyer.send(JSON.stringify({ type: 'need_offer', slot: data.slot }));
+
+          ws.on('close', () => {
+            console.log(`[server] Viewer in slot ${data.slot} disconnected`);
+            slot.viewer = null;
+          });
+        } else {
+          console.log(`[server] Viewer attempted to jack into empty slot ${data.slot}`);
+          ws.send(JSON.stringify({ type: 'need_offer', slot: data.slot }));
+
+          // Set up flyer logic in same session if they proceed
+          ws.on('close', () => {
+            if (slot.flyer === ws) {
+              slot.flyer = null;
+              console.log(`[server] Solo flyer disconnected from slot ${data.slot}`);
+            }
+          });
+        }
+        break;
+
+      case 'offer':
+        console.log(`[server] Offer received for slot ${data.slot}`);
+        if (slot.viewer && slot.viewer.readyState === WebSocket.OPEN) {
+          slot.viewer.send(JSON.stringify({ type: 'offer', offer: data.offer }));
+        }
+        break;
+
+      case 'answer':
+        console.log(`[server] Answer received for slot ${data.slot}`);
+        if (slot.flyer && slot.flyer.readyState === WebSocket.OPEN) {
+          slot.flyer.send(JSON.stringify({ type: 'answer', answer: data.answer }));
+        }
+        break;
+
+      case 'ice':
+        if (slot.flyer === ws && slot.viewer && slot.viewer.readyState === WebSocket.OPEN) {
+          slot.viewer.send(JSON.stringify({ type: 'ice', candidate: data.candidate }));
+        } else if (slot.viewer === ws && slot.flyer && slot.flyer.readyState === WebSocket.OPEN) {
+          slot.flyer.send(JSON.stringify({ type: 'ice', candidate: data.candidate }));
+        }
+        break;
+
+      default:
+        console.log(`[server] Unknown message type: ${data.type}`);
     }
   });
 
   ws.on('close', () => {
-    if (ws.isFlyer && ws.slot) {
-      console.log(`Flyer disconnected from Slot ${ws.slot}`);
-      slots[ws.slot] = null;
+    for (const slot of Object.values(slots)) {
+      if (slot.flyer === ws) slot.flyer = null;
+      if (slot.viewer === ws) slot.viewer = null;
     }
   });
 });
-
-console.log('Fly By Night signaling server running on ws://0.0.0.0:8080');
