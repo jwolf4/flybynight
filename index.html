@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Fly By Night — Thread Prototype</title>
+  <title>Fly By Night — Catalog Prototype</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -14,12 +14,13 @@
       <div class="brand">
         <h1 class="flicker">Fly By Night</h1>
         <p class="tagline flicker">Live in your world, <em>Fly in ours.</em></p>
+        <p class="tagline flicker subtle">CATALOG // 5 thread-spots // memory only</p>
       </div>
 
       <div class="status">
         <div class="status-row">
-          <span class="label">THREAD:</span>
-          <span id="threadStatus" class="value">EMPTY</span>
+          <span class="label">SPOTS:</span>
+          <span id="spotsStatus" class="value">0/5 active</span>
         </div>
         <div class="status-row">
           <span class="label">REFRESH:</span>
@@ -27,74 +28,13 @@
         </div>
         <div class="status-row">
           <span class="label">LOCAL:</span>
-          <span class="value">memory only</span>
+          <span class="value">volatile</span>
         </div>
       </div>
     </header>
 
-    <section class="panel">
-      <!-- THREAD CREATION (shown only when empty) -->
-      <div id="createThreadBox" class="box">
-        <div class="box-title">Start a thread</div>
-        <form id="createThreadForm" class="form">
-          <label class="field">
-            <span class="field-label">Name (optional)</span>
-            <input id="opName" type="text" maxlength="32" placeholder="Anonymous" />
-          </label>
-
-          <label class="field">
-            <span class="field-label">Comment</span>
-            <textarea id="opComment" rows="5" maxlength="2000" placeholder="Write the OP..."></textarea>
-          </label>
-
-          <label class="field">
-            <span class="field-label">Image (optional)</span>
-            <input id="opImage" type="file" accept="image/*" />
-          </label>
-
-          <div class="actions">
-            <button type="submit" class="btn">Create Thread</button>
-            <button type="button" id="seedDemo" class="btn btn-ghost">Seed Demo</button>
-          </div>
-        </form>
-      </div>
-
-      <!-- THREAD VIEW -->
-      <div id="threadBox" class="box hidden">
-        <div class="box-title">
-          Thread
-          <span class="box-subtitle" id="threadMeta"></span>
-        </div>
-
-        <div id="threadPosts" class="posts"></div>
-
-        <div class="divider"></div>
-
-        <!-- REPLY FORM -->
-        <form id="replyForm" class="form">
-          <div class="form-row">
-            <label class="field">
-              <span class="field-label">Name (optional)</span>
-              <input id="replyName" type="text" maxlength="32" placeholder="Anonymous" />
-            </label>
-
-            <label class="field">
-              <span class="field-label">Image (optional)</span>
-              <input id="replyImage" type="file" accept="image/*" />
-            </label>
-          </div>
-
-          <label class="field">
-            <span class="field-label">Reply</span>
-            <textarea id="replyComment" rows="4" maxlength="2000" placeholder="Use >>123 to quote. Click any No.### to insert."></textarea>
-          </label>
-
-          <div class="actions">
-            <button type="submit" class="btn">Post Reply</button>
-            <button type="button" id="deleteThread" class="btn btn-danger">Delete Thread</button>
-          </div>
-        </form>
-      </div>
+    <section class="catalog">
+      <div id="spotsGrid" class="spots-grid"></div>
     </section>
 
     <footer class="footer">
