@@ -82,10 +82,93 @@ function defaultTitleForThread(spotId) {
   return `Thread Spot ${spotId}`;
 }
 
+/* ---------------------------
+   Preserve form state across rerenders
+   --------------------------- */
+
+function stableFieldKey(node) {
+  // Prefer explicit id if present
+  if (node.id) return `id:${node.id}`;
+
+  // Otherwise derive a stable key from spot + form + name
+  const form = node.closest("form");
+  const spot = node.closest(".spot")?.getAttribute("data-spot-id");
+  const formType = form?.getAttribute("data-form");
+  const name = node.getAttribute("name");
+  if (spot && formType && name) return `spot:${spot}|form:${formType}|name:${name}`;
+
+  return null;
+}
+
+function snapshotFormState(container) {
+  const state = {
+    activeKey: null,
+    selStart: null,
+    selEnd: null,
+    values: new Map(),
+  };
+
+  const active = document.activeElement;
+  if (active && container.contains(active) && (active.tagName === "TEXTAREA" || active.tagName === "INPUT")) {
+    // track focus by our stable key (not DOM node)
+    const k = stableFieldKey(active);
+    if (k) state.activeKey = k;
+
+    if (active.selectionStart != null) {
+      state.selStart = active.selectionStart;
+      state.selEnd = active.selectionEnd;
+    }
+  }
+
+  container.querySelectorAll("input, textarea").forEach((node) => {
+    if (node.tagName === "INPUT" && node.type === "file") return; // cannot restore
+    const k = stableFieldKey(node);
+    if (!k) return;
+    state.values.set(k, node.value);
+  });
+
+  return state;
+}
+
+function restoreFormState(container, state) {
+  if (!state) return;
+
+  container.querySelectorAll("input, textarea").forEach((node) => {
+    if (node.tagName === "INPUT" && node.type === "file") return;
+    const k = stableFieldKey(node);
+    if (!k) return;
+    if (state.values.has(k)) node.value = state.values.get(k);
+  });
+
+  if (state.activeKey) {
+    const target = Array.from(container.querySelectorAll("input, textarea")).find((n) => stableFieldKey(n) === state.activeKey);
+    if (target) {
+      target.focus();
+      if (state.selStart != null && target.selectionStart != null) {
+        target.setSelectionRange(state.selStart, state.selEnd ?? state.selStart);
+      }
+    }
+  }
+}
+
+function hasSelectedFile(container) {
+  return Array.from(container.querySelectorAll('input[type="file"]')).some(
+    (inp) => inp.files && inp.files.length > 0
+  );
+}
+
+function isUserTypingIn(container) {
+  const a = document.activeElement;
+  if (!a || !container.contains(a)) return false;
+  if (a.tagName === "TEXTAREA") return true;
+  if (a.tagName === "INPUT" && a.type !== "file") return true;
+  return false;
+}
+
 /* ---- Mutations ---- */
 
 async function createThreadInSpot(spotId, { title, name, comment, imageFile }) {
-  const spot = spots.find(s => s.spotId === spotId);
+  const spot = spots.find((s) => s.spotId === spotId);
   if (!spot || spot.thread) return;
 
   const imageDataUrl = await fileToDataUrl(imageFile);
@@ -104,13 +187,13 @@ async function createThreadInSpot(spotId, { title, name, comment, imageFile }) {
   spot.thread = {
     threadId,
     createdAt,
-    title: (title?.trim() || defaultTitleForThread(spotId)),
+    title: title?.trim() || defaultTitleForThread(spotId),
     posts: [opPost],
   };
 }
 
 async function addReplyToSpotThread(spotId, { name, comment, imageFile }) {
-  const spot = spots.find(s => s.spotId === spotId);
+  const spot = spots.find((s) => s.spotId === spotId);
   if (!spot?.thread) return;
 
   const imageDataUrl = await fileToDataUrl(imageFile);
@@ -127,7 +210,7 @@ async function addReplyToSpotThread(spotId, { name, comment, imageFile }) {
 }
 
 function deleteThreadInSpot(spotId) {
-  const spot = spots.find(s => s.spotId === spotId);
+  const spot = spots.find((s) => s.spotId === spotId);
   if (!spot) return;
   spot.thread = null;
   if (expandedSpotId === spotId) expandedSpotId = null;
@@ -136,21 +219,30 @@ function deleteThreadInSpot(spotId) {
 /* ---- Rendering ---- */
 
 function render() {
+  // Snapshot BEFORE any DOM rewrite
+  const snap = snapshotFormState(el.spotsGrid);
+
   el.refreshStatus.textContent = `every ${REFRESH_SECONDS}s`;
 
-  const activeCount = spots.filter(s => !!s.thread).length;
+  const activeCount = spots.filter((s) => !!s.thread).length;
   el.spotsStatus.textContent = `${activeCount}/${SPOT_COUNT} active`;
 
   el.tablesStage.classList.toggle("expanded", expandedSpotId !== null);
-  el.backToTablesTop.classList.toggle("hidden", expandedSpotId === null);
-  // When expanded: show only the expanded spot (others hidden)
-  el.spotsGrid.innerHTML = spots.map(spot => {
-    const hidden = expandedSpotId !== null && expandedSpotId !== spot.spotId;
-    const expanded = expandedSpotId === spot.spotId;
-    return renderSpot(spot, { hidden, expanded });
-  }).join("");
+  if (el.backToTablesTop) el.backToTablesTop.classList.toggle("hidden", expandedSpotId === null);
 
-  spots.forEach(s => wireSpotHandlers(s.spotId));
+  // When expanded: show only the expanded spot (others hidden)
+  el.spotsGrid.innerHTML = spots
+    .map((spot) => {
+      const hidden = expandedSpotId !== null && expandedSpotId !== spot.spotId;
+      const expanded = expandedSpotId === spot.spotId;
+      return renderSpot(spot, { hidden, expanded });
+    })
+    .join("");
+
+  spots.forEach((s) => wireSpotHandlers(s.spotId));
+
+  // Restore AFTER render + handlers
+  restoreFormState(el.spotsGrid, snap);
 }
 
 function renderSpot(spot, { hidden, expanded }) {
@@ -187,7 +279,11 @@ function renderSpot(spot, { hidden, expanded }) {
         ${spot.thread ? renderThreadPosts(spot) : renderCreateThreadForm(spot.spotId)}
 
         ${spot.thread ? `<div class="divider"></div>${renderReplyForm(spot.spotId)}` : ""}
-        ${spot.thread ? `<div class="actions"><button type="button" class="btn btn-danger" data-action="delete-thread" data-spot-id="${spot.spotId}">Delete Thread</button></div>` : ""}
+        ${
+          spot.thread
+            ? `<div class="actions"><button type="button" class="btn btn-danger" data-action="delete-thread" data-spot-id="${spot.spotId}">Delete Thread</button></div>`
+            : ""
+        }
       </div>
     </section>
   `;
@@ -212,14 +308,13 @@ function renderPreview(spot) {
 
 function renderThreadPosts(spot) {
   const posts = spot.thread.posts;
-  const postsHtml = posts.map((p, idx) => {
-    const isOp = idx === 0;
-    const title = isOp ? "OP" : "REPLY";
-    const imgHtml = p.imageDataUrl
-      ? `<img class="post-image" src="${p.imageDataUrl}" alt="upload" />`
-      : "";
+  const postsHtml = posts
+    .map((p, idx) => {
+      const isOp = idx === 0;
+      const title = isOp ? "OP" : "REPLY";
+      const imgHtml = p.imageDataUrl ? `<img class="post-image" src="${p.imageDataUrl}" alt="upload" />` : "";
 
-    return `
+      return `
       <article class="post" id="p${p.id}" data-post-id="${p.id}" data-spot-id="${spot.spotId}">
         <div class="post-header">
           <div class="post-left">
@@ -237,7 +332,8 @@ function renderThreadPosts(spot) {
         </div>
       </article>
     `;
-  }).join("");
+    })
+    .join("");
 
   return `<div class="posts" data-posts-for="${spot.spotId}">${postsHtml}</div>`;
 }
@@ -311,7 +407,6 @@ function wireSpotHandlers(spotId) {
     preview.addEventListener("click", () => {
       expandedSpotId = spotId;
       render();
-      // keep stage visible; also scroll tables into view for expanded
       spotEl.scrollIntoView({ block: "start", behavior: "smooth" });
     });
   }
@@ -325,7 +420,7 @@ function wireSpotHandlers(spotId) {
     });
   }
 
-  // Create thread form (only in expanded empty state)
+  // Create thread form
   const createForm = spotEl.querySelector(`form[data-form="create-thread"]`);
   if (createForm) {
     createForm.addEventListener("submit", async (e) => {
@@ -338,7 +433,7 @@ function wireSpotHandlers(spotId) {
         title: String(fd.get("title") ?? ""),
         name: String(fd.get("name") ?? ""),
         comment,
-        imageFile: (createForm.querySelector('input[type="file"][name="image"]')?.files?.[0]) ?? null,
+        imageFile: createForm.querySelector('input[type="file"][name="image"]')?.files?.[0] ?? null,
       });
 
       render();
@@ -357,7 +452,7 @@ function wireSpotHandlers(spotId) {
       await addReplyToSpotThread(spotId, {
         name: String(fd.get("name") ?? ""),
         comment,
-        imageFile: (replyForm.querySelector('input[type="file"][name="image"]')?.files?.[0]) ?? null,
+        imageFile: replyForm.querySelector('input[type="file"][name="image"]')?.files?.[0] ?? null,
       });
 
       render();
@@ -410,13 +505,22 @@ function tickClock() {
 
 window.addEventListener("resize", syncHeaderHeightVar);
 syncHeaderHeightVar();
-el.backToTablesTop.addEventListener("click", () => {
-  expandedSpotId = null;
-  render();
-});
+
+if (el.backToTablesTop) {
+  el.backToTablesTop.addEventListener("click", () => {
+    expandedSpotId = null;
+    render();
+  });
+}
 
 tickClock();
 setInterval(tickClock, 1000);
 
 render();
-setInterval(render, REFRESH_SECONDS * 1000);
+
+// IMPORTANT: don't erase in-progress typing or selected files on refresh tick
+setInterval(() => {
+  if (hasSelectedFile(el.spotsGrid)) return;
+  if (isUserTypingIn(el.spotsGrid)) return;
+  render();
+}, REFRESH_SECONDS * 1000);
