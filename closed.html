@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fly By Night — Closed</title>
+  <link rel="stylesheet" href="splash.css" />
+</head>
+<body>
+  <div class="scanlines"></div>
+
+  <div class="wrap">
+    <div class="frame">
+      <div class="header">
+        <div class="brand">
+          <h1 class="flicker">Fly By Night</h1>
+          <p class="tagline flicker">Live in your world, <em>fly in ours.</em></p>
+        </div>
+        <div class="subtle flicker">
+          CLOSED<span class="cursor"></span>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="label">Hours of operation</div>
+          <div class="hours">
+            <div><span class="value">Friday</span> / <span class="value">Saturday</span></div>
+            <div><span class="value">7:00 PM</span> to <span class="value">2:00 AM</span></div>
+          </div>
+          <div class="kicker">
+            The room is dark. Come back when the stage lights are on.
+          </div>
+        </div>
+
+        <div class="card clock-wrap" id="clockRoot">
+          <div class="label">Current time</div>
+          <div class="analog" aria-label="Analog clock">
+            <div class="hand hour"></div>
+            <div class="hand min"></div>
+            <div class="hand sec"></div>
+            <div class="pivot"></div>
+          </div>
+          <div class="kicker">
+            Local: <span id="localTime" class="value"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <div class="subtle">Fly By Night is offline.</div>
+        <div class="subtle flicker">memory only<span class="cursor"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="splash.js"></script>
+  <script>
+    initAnalogClock("clockRoot");
+  </script>
+</body>
+</html>

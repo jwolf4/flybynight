@@ -1,0 +1,263 @@
+:root{
+  --bg:#000;
+  --fg:#00ff00;
+  --fg-dim:rgba(0,255,0,.65);
+  --fg-faint:rgba(0,255,0,.35);
+  --border:rgba(0,255,0,.28);
+  --shadow:rgba(0,255,0,.25);
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  overflow:hidden;
+}
+
+.scanlines{
+  position:fixed; inset:0;
+  background:repeating-linear-gradient(
+    to bottom,
+    rgba(0,255,0,0.05) 0px,
+    rgba(0,255,0,0.05) 2px,
+    transparent 2px,
+    transparent 4px
+  );
+  pointer-events:none;
+  z-index:0;
+}
+
+.wrap{
+  position:relative;
+  z-index:1;
+  height:100%;
+  display:grid;
+  place-items:center;
+  padding:22px;
+}
+
+.frame{
+  width:min(980px, 96vw);
+  border:1px solid var(--border);
+  box-shadow:0 0 14px var(--shadow);
+  background:rgba(0,0,0,0.88);
+  padding:18px 18px 16px;
+}
+
+.header{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:14px;
+  border-bottom:1px solid var(--border);
+  padding-bottom:12px;
+  margin-bottom:14px;
+}
+
+.brand h1{
+  margin:0 0 6px 0;
+  font-size:2.2rem;
+  text-shadow:0 0 5px var(--fg), 0 0 10px var(--fg);
+}
+
+.brand .tagline{
+  margin:0;
+  color:var(--fg-dim);
+  text-shadow:0 0 3px var(--fg);
+}
+
+.flicker{ animation:flicker 3s infinite; }
+.subtle{ opacity:0.9; color:var(--fg-dim); }
+
+.grid{
+  display:grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  gap:16px;
+}
+
+.card{
+  border:1px solid var(--border);
+  box-shadow:0 0 12px rgba(0,255,0,0.12);
+  padding:14px;
+}
+
+.label{ color:var(--fg-faint); }
+.value{ color:var(--fg); }
+
+.hours{
+  margin-top:10px;
+  line-height:1.5;
+  color:var(--fg-dim);
+}
+
+.kicker{
+  margin-top:10px;
+  color:var(--fg-faint);
+  font-size:0.95rem;
+}
+
+.footer{
+  margin-top:14px;
+  border-top:1px solid var(--border);
+  padding-top:10px;
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  color:var(--fg-dim);
+}
+
+.cursor{
+  display:inline-block;
+  width:10px;
+  height:1em;
+  background-color:var(--fg);
+  vertical-align:-2px;
+  animation:blink 1s step-end infinite;
+}
+
+@keyframes blink{ from,to{background-color:transparent} 50%{background-color:var(--fg)} }
+@keyframes flicker{
+  0%,19%,21%,23%,25%,54%,56%,100%{opacity:1}
+  20%,22%,24%,55%{opacity:.6}
+}
+
+/* -------- Analog clock -------- */
+.clock-wrap{
+  display:grid;
+  place-items:center;
+}
+
+.analog{
+  width:220px;
+  height:220px;
+  border:1px solid var(--border);
+  box-shadow:0 0 14px rgba(0,255,0,0.12);
+  border-radius:50%;
+  position:relative;
+  background:
+    radial-gradient(circle at center, rgba(0,255,0,0.08), transparent 65%),
+    #000;
+}
+
+.tick{
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:2px;
+  height:10px;
+  background:var(--fg-faint);
+  transform-origin:50% 100%;
+}
+
+.tick.major{
+  height:16px;
+  background:var(--fg-dim);
+}
+
+.hand{
+  position:absolute;
+  left:50%;
+  top:50%;
+  transform-origin:50% 100%;
+  background:var(--fg);
+  box-shadow:0 0 10px rgba(0,255,0,0.25);
+}
+
+.hand.hour{ width:4px; height:56px; transform:translate(-50%,-100%) rotate(0deg); opacity:0.95;}
+.hand.min { width:3px; height:78px; transform:translate(-50%,-100%) rotate(0deg); opacity:0.95;}
+.hand.sec { width:2px; height:90px; transform:translate(-50%,-100%) rotate(0deg); opacity:0.75;}
+
+.pivot{
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:8px;
+  height:8px;
+  transform:translate(-50%,-50%);
+  background:var(--fg);
+  border:1px solid var(--border);
+  box-shadow:0 0 10px rgba(0,255,0,0.35);
+}
+
+/* -------- Goodnight screen -------- */
+.center{
+  display:grid;
+  place-items:center;
+  gap:14px;
+}
+
+.pc-stage{
+  width:min(820px, 96vw);
+  border:1px solid var(--border);
+  box-shadow:0 0 14px var(--shadow);
+  background:rgba(0,0,0,0.88);
+  padding:18px;
+}
+
+.pc-title{
+  display:flex;
+  justify-content:space-between;
+  align-items:baseline;
+  border-bottom:1px solid var(--border);
+  padding-bottom:12px;
+  margin-bottom:14px;
+}
+
+.pc-title h1{
+  margin:0;
+  font-size:2.1rem;
+  text-shadow:0 0 5px var(--fg), 0 0 10px var(--fg);
+}
+
+.pc{
+  position:relative;
+  display:grid;
+  place-items:center;
+}
+
+.pixelated{
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.retro-sprite{
+  width: min(520px, 90vw);
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  margin-bottom: 24px;
+  filter: drop-shadow(0 0 18px rgba(0,255,0,0.15));
+}
+
+.screen-overlay{
+  position:absolute;
+  /* These numbers match the SVG “screen window” below */
+  width: 420px;
+  height: 260px;
+  top: 92px;
+  left: 50%;
+  transform: translateX(-50%);
+  display:grid;
+  place-items:center;
+  pointer-events:none;
+  padding:14px;
+}
+
+.goodnight{
+  font-family: 'Mr Dafoe', cursive;
+  font-size: 3rem;
+  color: rgba(0,255,0,0.95);
+  text-shadow:
+    0 0 14px rgba(0,255,0,0.4),
+    0 0 28px rgba(0,255,0,0.18);
+  transform: rotate(-1.2deg);
+  letter-spacing: 0.5px;
+}
+
+@media (max-width: 700px){
+  .goodnight{
+    font-size: 2rem;
+  }
+}

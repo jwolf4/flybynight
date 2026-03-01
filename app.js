@@ -1,47 +1,37 @@
 /**
- * Fly By Night — 5 thread-spots "catalog" prototype (in-memory only)
- * - Fixed spots: 1..5
- * - Each spot can host 0 or 1 thread
- * - Thread = OP post + replies
- * - Post No.<id>, quoting with >>id
- * - Click No.<id> to insert >>id in that spot's reply box
- * - Render loop every N seconds (plus immediate render after posting)
+ * Fly By Night — 5 thread-spots w/ preview + expanded thread view (in-memory only)
  */
 
 const REFRESH_SECONDS = 10;
 const SPOT_COUNT = 5;
 
-// ---- In-memory state ----
-/**
- * spots = [
- *  { spotId: 1, thread: null | { threadId, createdAt, posts: Post[] } },
- *  ...
- * ]
- */
 let spots = Array.from({ length: SPOT_COUNT }, (_, i) => ({
   spotId: i + 1,
-  thread: null,
+  thread: null, // { threadId, createdAt, title, posts: Post[] }
 }));
 
 let nextThreadId = 1;
 let nextPostId = 100;
 
-// ---- DOM ----
+let expandedSpotId = null; // when set, show only that spot expanded
+
 const el = {
   spotsGrid: document.getElementById("spotsGrid"),
+  tablesStage: document.getElementById("tablesStage"),
   spotsStatus: document.getElementById("spotsStatus"),
   refreshStatus: document.getElementById("refreshStatus"),
   clock: document.getElementById("clock"),
+  header: document.getElementById("header"),
+  backToTablesTop: document.getElementById("backToTablesTop"),
 };
 
-// ---- Utilities ----
 function nowIso() {
   const d = new Date();
   return d.toISOString().replace("T", " ").slice(0, 19) + "Z";
 }
 
 function escapeHtml(str) {
-  return str
+  return String(str ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -82,8 +72,19 @@ async function fileToDataUrl(file) {
   });
 }
 
-// ---- Mutations ----
-async function createThreadInSpot(spotId, { name, comment, imageFile }) {
+function snippet(text, max = 140) {
+  const s = String(text ?? "").trim().replace(/\s+/g, " ");
+  if (s.length <= max) return s;
+  return s.slice(0, max - 1) + "…";
+}
+
+function defaultTitleForThread(spotId) {
+  return `Thread Spot ${spotId}`;
+}
+
+/* ---- Mutations ---- */
+
+async function createThreadInSpot(spotId, { title, name, comment, imageFile }) {
   const spot = spots.find(s => s.spotId === spotId);
   if (!spot || spot.thread) return;
 
@@ -103,6 +104,7 @@ async function createThreadInSpot(spotId, { name, comment, imageFile }) {
   spot.thread = {
     threadId,
     createdAt,
+    title: (title?.trim() || defaultTitleForThread(spotId)),
     posts: [opPost],
   };
 }
@@ -128,114 +130,97 @@ function deleteThreadInSpot(spotId) {
   const spot = spots.find(s => s.spotId === spotId);
   if (!spot) return;
   spot.thread = null;
+  if (expandedSpotId === spotId) expandedSpotId = null;
 }
 
-async function seedDemo() {
-  // Fill 2 spots with demo threads
-  await createThreadInSpot(1, {
-    name: "Anonymous",
-    comment: "Spot 1 OP: catalog view prototype.\nClick No.### to quote.\nTry writing >>100 in a reply.",
-    imageFile: null
-  });
-  await addReplyToSpotThread(1, { name: "Anonymous", comment: "replying to >>100", imageFile: null });
-  await addReplyToSpotThread(1, { name: "Anonymous", comment: "chain: >>100 >>101", imageFile: null });
+/* ---- Rendering ---- */
 
-  await createThreadInSpot(3, {
-    name: "Anonymous",
-    comment: "Spot 3 OP: this thread stays here.\nNo bump logic.\nDeletion = explicit for now.",
-    imageFile: null
-  });
-  await addReplyToSpotThread(3, { name: "Anonymous", comment: "ok", imageFile: null });
-}
-
-// ---- Rendering ----
 function render() {
   el.refreshStatus.textContent = `every ${REFRESH_SECONDS}s`;
 
   const activeCount = spots.filter(s => !!s.thread).length;
   el.spotsStatus.textContent = `${activeCount}/${SPOT_COUNT} active`;
 
-  el.spotsGrid.innerHTML = spots.map(spot => renderSpot(spot)).join("");
+  el.tablesStage.classList.toggle("expanded", expandedSpotId !== null);
+  el.backToTablesTop.classList.toggle("hidden", expandedSpotId === null);
+  // When expanded: show only the expanded spot (others hidden)
+  el.spotsGrid.innerHTML = spots.map(spot => {
+    const hidden = expandedSpotId !== null && expandedSpotId !== spot.spotId;
+    const expanded = expandedSpotId === spot.spotId;
+    return renderSpot(spot, { hidden, expanded });
+  }).join("");
 
-  // attach handlers for each spot
-  spots.forEach((spot) => {
-    wireSpotHandlers(spot.spotId);
-  });
+  spots.forEach(s => wireSpotHandlers(s.spotId));
 }
 
-function renderSpot(spot) {
-  const isEmpty = !spot.thread;
+function renderSpot(spot, { hidden, expanded }) {
+  const cls = ["spot"];
+  if (hidden) cls.push("hidden");
 
-  const headerBadge = isEmpty
-    ? `<span class="badge empty">EMPTY</span>`
-    : `<span class="badge active">ACTIVE</span>`;
+  if (!expanded) {
+    // PREVIEW MODE (fits inside table)
+    return `
+      <section class="${cls.join(" ")}" data-spot-id="${spot.spotId}">
+        ${renderPreview(spot)}
+      </section>
+    `;
+  }
 
-  const meta = isEmpty
-    ? `—`
-    : `#${spot.thread.threadId} — ${spot.thread.createdAt} — posts ${spot.thread.posts.length}`;
-
-  const body = isEmpty
-    ? renderSpotEmptyBody(spot.spotId)
-    : renderSpotThreadBody(spot.spotId, spot.thread);
-
+  // EXPANDED MODE (full thread module)
   return `
-    <section class="spot" data-spot-id="${spot.spotId}">
-      <div class="spot-header">
-        <div class="spot-title">Thread Spot ${spot.spotId}</div>
-        <div style="display:flex; gap:10px; align-items:baseline;">
-          <div class="spot-meta">${escapeHtml(meta)}</div>
-          ${headerBadge}
+    <section class="${cls.join(" ")}" data-spot-id="${spot.spotId}">
+      <div class="thread-full">
+        <div class="thread-full-bar">
+          <div>
+            <div class="thread-full-title">${escapeHtml(spot.thread?.title ?? defaultTitleForThread(spot.spotId))}</div>
+            <div class="thread-full-meta">${
+              spot.thread
+                ? `#${spot.thread.threadId} — ${escapeHtml(spot.thread.createdAt)} — posts ${spot.thread.posts.length}`
+                : `EMPTY`
+            }</div>
+          </div>
+          <div class="thread-back" data-action="back-to-tables">← back to tables</div>
         </div>
-      </div>
 
-      <div class="spot-body">
-        ${body}
-      </div>
+        <div class="divider"></div>
 
-      <div class="spot-footer">
-        <div class="spot-meta">—</div>
+        ${spot.thread ? renderThreadPosts(spot) : renderCreateThreadForm(spot.spotId)}
+
+        ${spot.thread ? `<div class="divider"></div>${renderReplyForm(spot.spotId)}` : ""}
+        ${spot.thread ? `<div class="actions"><button type="button" class="btn btn-danger" data-action="delete-thread" data-spot-id="${spot.spotId}">Delete Thread</button></div>` : ""}
       </div>
     </section>
   `;
 }
 
-function renderSpotEmptyBody(spotId) {
+function renderPreview(spot) {
+  const isEmpty = !spot.thread;
+
+  const title = isEmpty ? `EMPTY` : spot.thread.title;
+  const latest = isEmpty
+    ? `Click to start a thread in this spot.`
+    : snippet(spot.thread.posts[spot.thread.posts.length - 1]?.comment ?? "");
+
   return `
-    <form class="form" data-form="create-thread" data-spot-id="${spotId}">
-      <label class="field">
-        <span class="field-label">Name (optional)</span>
-        <input type="text" maxlength="32" name="name" placeholder="Anonymous" />
-      </label>
-
-      <label class="field">
-        <span class="field-label">Comment</span>
-        <textarea rows="5" maxlength="2000" name="comment" placeholder="Start a thread in Spot ${spotId}..."></textarea>
-      </label>
-
-      <label class="field">
-        <span class="field-label">Image (optional)</span>
-        <input type="file" accept="image/*" name="image" />
-      </label>
-
-      <div class="actions">
-        <button type="submit" class="btn">Create Thread</button>
-        ${spotId === 1 ? `<button type="button" class="btn btn-ghost" data-action="seed-demo">Seed Demo</button>` : ""}
-      </div>
-    </form>
+    <div class="thread-preview" data-action="expand-spot" data-spot-id="${spot.spotId}">
+      <div class="preview-title">${escapeHtml(title)}</div>
+      <div class="preview-snippet ${isEmpty ? "preview-empty" : ""}">${escapeHtml(latest)}</div>
+      <div class="preview-hint">Click to view thread and reply</div>
+    </div>
   `;
 }
 
-function renderSpotThreadBody(spotId, thread) {
-  const postsHtml = thread.posts.map((p, idx) => {
+function renderThreadPosts(spot) {
+  const posts = spot.thread.posts;
+  const postsHtml = posts.map((p, idx) => {
     const isOp = idx === 0;
     const title = isOp ? "OP" : "REPLY";
-
     const imgHtml = p.imageDataUrl
       ? `<img class="post-image" src="${p.imageDataUrl}" alt="upload" />`
       : "";
 
     return `
-      <article class="post" id="p${p.id}" data-post-id="${p.id}" data-spot-id="${spotId}">
+      <article class="post" id="p${p.id}" data-post-id="${p.id}" data-spot-id="${spot.spotId}">
         <div class="post-header">
           <div class="post-left">
             <span class="post-name">${escapeHtml(p.name)}</span>
@@ -246,7 +231,6 @@ function renderSpotThreadBody(spotId, thread) {
             No.${p.id}
           </div>
         </div>
-
         <div class="post-body">
           <div class="post-comment">${renderCommentWithQuotes(p.comment)}</div>
           ${imgHtml}
@@ -255,13 +239,41 @@ function renderSpotThreadBody(spotId, thread) {
     `;
   }).join("");
 
+  return `<div class="posts" data-posts-for="${spot.spotId}">${postsHtml}</div>`;
+}
+
+function renderCreateThreadForm(spotId) {
   return `
-    <div class="posts" data-posts-for="${spotId}">
-      ${postsHtml}
-    </div>
+    <form class="form" data-form="create-thread" data-spot-id="${spotId}">
+      <label class="field">
+        <span class="field-label">Thread title</span>
+        <input type="text" maxlength="60" name="title" placeholder="Untitled thread" />
+      </label>
 
-    <div class="divider"></div>
+      <label class="field">
+        <span class="field-label">Name (optional)</span>
+        <input type="text" maxlength="32" name="name" placeholder="Anonymous" />
+      </label>
 
+      <label class="field">
+        <span class="field-label">Comment</span>
+        <textarea rows="6" maxlength="2000" name="comment" placeholder="Start the OP..."></textarea>
+      </label>
+
+      <label class="field">
+        <span class="field-label">Image (optional)</span>
+        <input type="file" accept="image/*" name="image" />
+      </label>
+
+      <div class="actions">
+        <button type="submit" class="btn">Create Thread</button>
+      </div>
+    </form>
+  `;
+}
+
+function renderReplyForm(spotId) {
+  return `
     <form class="form" data-form="reply" data-spot-id="${spotId}">
       <div class="form-row">
         <label class="field">
@@ -277,31 +289,43 @@ function renderSpotThreadBody(spotId, thread) {
 
       <label class="field">
         <span class="field-label">Reply</span>
-        <textarea rows="4" maxlength="2000" name="comment" placeholder="Use >>123 to quote. Click No.### to insert."></textarea>
+        <textarea rows="5" maxlength="2000" name="comment" placeholder="Use >>123 to quote. Click No.### to insert."></textarea>
       </label>
 
       <div class="actions">
         <button type="submit" class="btn">Post Reply</button>
-        <button type="button" class="btn btn-danger" data-action="delete-thread" data-spot-id="${spotId}">Delete Thread</button>
       </div>
     </form>
   `;
 }
 
+/* ---- Wiring ---- */
+
 function wireSpotHandlers(spotId) {
   const spotEl = el.spotsGrid.querySelector(`.spot[data-spot-id="${spotId}"]`);
   if (!spotEl) return;
 
-  // Seed demo button (only exists in spot 1 create form)
-  const seedBtn = spotEl.querySelector(`[data-action="seed-demo"]`);
-  if (seedBtn) {
-    seedBtn.addEventListener("click", async () => {
-      await seedDemo();
+  // Expand on preview click
+  const preview = spotEl.querySelector(`[data-action="expand-spot"][data-spot-id="${spotId}"]`);
+  if (preview) {
+    preview.addEventListener("click", () => {
+      expandedSpotId = spotId;
+      render();
+      // keep stage visible; also scroll tables into view for expanded
+      spotEl.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+  }
+
+  // Back to tables
+  const back = spotEl.querySelector(`[data-action="back-to-tables"]`);
+  if (back) {
+    back.addEventListener("click", () => {
+      expandedSpotId = null;
       render();
     });
   }
 
-  // Create thread form
+  // Create thread form (only in expanded empty state)
   const createForm = spotEl.querySelector(`form[data-form="create-thread"]`);
   if (createForm) {
     createForm.addEventListener("submit", async (e) => {
@@ -311,6 +335,7 @@ function wireSpotHandlers(spotId) {
       if (!comment.trim()) return;
 
       await createThreadInSpot(spotId, {
+        title: String(fd.get("title") ?? ""),
         name: String(fd.get("name") ?? ""),
         comment,
         imageFile: (createForm.querySelector('input[type="file"][name="image"]')?.files?.[0]) ?? null,
@@ -348,7 +373,7 @@ function wireSpotHandlers(spotId) {
     });
   }
 
-  // Click No.### to insert quote into that spot's reply textarea
+  // Click No.### to insert quote
   spotEl.querySelectorAll(".post-no").forEach((node) => {
     node.addEventListener("click", () => {
       const postId = node.getAttribute("data-postno");
@@ -361,7 +386,7 @@ function wireSpotHandlers(spotId) {
     });
   });
 
-  // Clicking a quote link inserts it into that spot's reply box too
+  // Clicking a quote link inserts it into reply
   spotEl.querySelectorAll("a.quote").forEach((a) => {
     a.addEventListener("click", () => {
       const q = a.getAttribute("data-quote");
@@ -372,10 +397,23 @@ function wireSpotHandlers(spotId) {
   });
 }
 
-// ---- Clock + refresh loop ----
+/* ---- Sticky header height ---- */
+function syncHeaderHeightVar() {
+  const h = el.header?.getBoundingClientRect?.().height ?? 110;
+  document.documentElement.style.setProperty("--header-height", `${Math.ceil(h)}px`);
+}
+
+/* ---- Clock + refresh loop ---- */
 function tickClock() {
   el.clock.textContent = `LOCAL TIME: ${new Date().toLocaleString()}`;
 }
+
+window.addEventListener("resize", syncHeaderHeightVar);
+syncHeaderHeightVar();
+el.backToTablesTop.addEventListener("click", () => {
+  expandedSpotId = null;
+  render();
+});
 
 tickClock();
 setInterval(tickClock, 1000);

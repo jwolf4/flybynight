@@ -9,32 +9,50 @@
 <body>
   <div class="scanlines"></div>
 
+  <header class="header header-sticky" id="header">
+    <div class="brand">
+      <h1 class="flicker">Fly By Night</h1>
+      <p class="tagline flicker">Live in your world, <em>Fly in ours.</em></p>
+      <p class="tagline flicker subtle">CATALOG // 5 thread-spots // memory only</p>
+    </div>
+
+    <div class="status">
+      <div class="status-row">
+        <span class="label">SPOTS:</span>
+        <span id="spotsStatus" class="value">0/5 active</span>
+      </div>
+      <div class="status-row">
+        <span class="label">REFRESH:</span>
+        <span id="refreshStatus" class="value">every 10s</span>
+      </div>
+      <div class="status-row">
+        <span class="label">LOCAL:</span>
+        <span class="value">volatile</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- STAGE (fixed under header) -->
+  <section class="stage-wrap stage-sticky" id="stageWrap">
+    <div class="stage">
+      <img class="stage-sprite" src="stage.png" alt="Stage" />
+      <div class="stage-video" aria-label="Video placeholder">
+        <div class="stage-video-inner flicker subtle">
+          VIDEO PLACEHOLDER
+        </div>
+      </div>
+<button id="backToTablesTop" class="stage-back hidden" type="button">
+  ← Back to tables
+</button>
+    </div>
+  </section>
+
+  <!-- TABLES / THREADS -->
   <main class="shell">
-    <header class="header">
-      <div class="brand">
-        <h1 class="flicker">Fly By Night</h1>
-        <p class="tagline flicker">Live in your world, <em>Fly in ours.</em></p>
-        <p class="tagline flicker subtle">CATALOG // 5 thread-spots // memory only</p>
-      </div>
-
-      <div class="status">
-        <div class="status-row">
-          <span class="label">SPOTS:</span>
-          <span id="spotsStatus" class="value">0/5 active</span>
-        </div>
-        <div class="status-row">
-          <span class="label">REFRESH:</span>
-          <span id="refreshStatus" class="value">every 10s</span>
-        </div>
-        <div class="status-row">
-          <span class="label">LOCAL:</span>
-          <span class="value">volatile</span>
-        </div>
-      </div>
-    </header>
-
     <section class="catalog">
-      <div id="spotsGrid" class="spots-grid"></div>
+      <div id="tablesStage" class="tables-stage">
+        <div id="spotsGrid"></div>
+      </div>
     </section>
 
     <footer class="footer">

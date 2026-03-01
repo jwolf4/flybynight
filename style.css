@@ -6,10 +6,28 @@
   --border: rgba(0, 255, 0, 0.28);
   --shadow: rgba(0, 255, 0, 0.25);
   --danger: rgba(255, 80, 80, 0.9);
+
+  /* Sprites */
+  --stage-sprite-url: url("stage.png");
+  --table-sprite-url: url("table.png"); /* rename your file to table.png OR change this */
+
+  /* Layout sizing */
+  --header-height: 110px; /* JS will update this */
+  --stage-height: 320px;
+
+  /* Table sizing */
+  --table-width: 360px;
+  --table-height: 260px;
+
+  /* Preview sizing (must fit inside table top) */
+  --preview-width: 240px;
+  --preview-min-height: 96px;
+
+  /* Expanded module sizing */
+  --expanded-width: 900px;
 }
 
 * { box-sizing: border-box; }
-
 html, body { height: 100%; }
 
 body {
@@ -34,22 +52,26 @@ body {
   z-index: 0;
 }
 
-.shell {
-  position: relative;
-  z-index: 1;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 24px 16px 40px;
-}
+/* ---------- HEADER ---------- */
 
 .header {
+  position: relative;
+  z-index: 10;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 14px 16px 12px;
+  border: 1px solid var(--border);
+  box-shadow: 0 0 12px var(--shadow);
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 16px;
   align-items: start;
-  border: 1px solid var(--border);
-  padding: 14px 14px 12px;
-  box-shadow: 0 0 12px var(--shadow);
+  background: rgba(0,0,0,0.92);
+}
+
+.header-sticky {
+  position: sticky;
+  top: 0;
 }
 
 .brand h1 {
@@ -79,121 +101,281 @@ body {
   justify-content: space-between;
   margin: 4px 0;
 }
-
 .status .label { color: var(--fg-faint); }
 .status .value { color: var(--fg); }
 
+/* ---------- STAGE ---------- */
+
+.stage-wrap {
+  max-width: 1200px;
+  margin: 12px auto 0;
+  padding: 0 16px;
+  position: relative;
+  z-index: 9;
+}
+
+.stage-sticky {
+  position: sticky;
+  top: var(--header-height);
+}
+
+.stage {
+  position: relative;
+  height: var(--stage-height);
+  border: 1px solid var(--border);
+  box-shadow: 0 0 12px var(--shadow);
+  overflow: hidden;
+  background: #000;
+}
+
+.stage-sprite {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  height: 100%;
+  width: auto;
+  transform: translate(-50%, -50%);
+  image-rendering: pixelated;
+  pointer-events: none;
+  user-select: none;
+  opacity: 0.95;
+}
+
+.stage-back{
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,0.72);
+  color: var(--fg);
+  padding: 8px 10px;
+  cursor: pointer;
+  box-shadow: 0 0 12px rgba(0,255,0,0.14);
+}
+
+.stage-back:hover{
+  box-shadow: 0 0 18px rgba(0,255,0,0.20);
+}
+
+.hidden{
+  display: none !important;
+}
+
+/* Video placeholder sits “on stage” */
+.stage-video {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  width: min(640px, 72%);
+  aspect-ratio: 16 / 9;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--border);
+  box-shadow: 0 0 18px rgba(0,255,0,0.15);
+  background: rgba(0,0,0,0.75);
+  display: grid;
+  place-items: center;
+}
+
+.stage-video-inner {
+  color: var(--fg-dim);
+  letter-spacing: 1px;
+}
+
+/* ---------- MAIN SHELL ---------- */
+
+.shell {
+  position: relative;
+  z-index: 1;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 18px 16px 40px;
+}
+
 .catalog { margin-top: 18px; }
 
-.spots-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+/* Coordinate space for the tables */
+.tables-stage {
+  position: relative;
+  width: 100%;
+  height: 780px;
+  border: 1px solid var(--border);
+  box-shadow: 0 0 12px var(--shadow);
+  overflow: hidden;
+  background: rgba(0,0,0,0.65);
 }
+
+#spotsGrid {
+  position: absolute;
+  inset: 0;
+}
+
+/* ---------- TABLE SPOT (preview mode) ---------- */
 
 .spot {
-  border: 1px solid var(--border);
-  padding: 12px;
-  box-shadow: 0 0 12px var(--shadow);
-  min-height: 320px;
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  gap: 10px;
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: var(--table-width);
+  height: var(--table-height);
+  z-index: 2;
 }
 
-.spot-header {
+/* table sprite */
+.spot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--table-sprite-url);
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  image-rendering: pixelated;
+  filter: brightness(0.85) contrast(1.06);
+  opacity: 0.98;
+  z-index: 0;
+}
+
+/* clickable preview “sits” on top surface */
+.thread-preview {
+  position: absolute;
+  left: 50%;
+  top: 34%;
+  transform: translate(-50%, -50%);
+  width: var(--preview-width);
+  min-height: var(--preview-min-height);
+  border: 1px solid var(--border);
+  box-shadow: 0 0 12px rgba(0,255,0,0.14);
+  background: rgba(0,0,0,0.82);
+  padding: 8px 9px;
+  transform: translate(-50%, -50%) scale(0.96);  /* subtle perspective */
+  z-index: 2;
+  cursor: pointer;
+}
+
+.thread-preview:hover {
+  box-shadow: 0 0 20px rgba(0,255,0,0.20);
+}
+
+.preview-title {
+  color: var(--fg);
+  text-shadow: 0 0 3px var(--fg);
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+}
+
+.preview-snippet {
+  color: var(--fg-dim);
+  font-size: 0.82rem;
+  line-height: 1.3;
+  white-space: pre-wrap;
+  max-height: 4.0em;
+  overflow: hidden;
+}
+
+.preview-hint {
+  margin-top: 10px;
+  color: var(--fg-faint);
+  font-size: 0.78rem;
+  margin-top: 8px;
+}
+
+.preview-empty {
+  color: var(--fg-faint);
+}
+
+/* Star-ish layout */
+.spot[data-spot-id="1"] { left: 50%; top: 50%; }
+.spot[data-spot-id="2"] { left: 20%; top: 28%; }
+.spot[data-spot-id="3"] { left: 80%; top: 28%; }
+.spot[data-spot-id="4"] { left: 18%; top: 78%; }
+.spot[data-spot-id="5"] { left: 82%; top: 78%; }
+
+/* ---------- EXPANDED MODE ---------- */
+
+/* When expanded, kill star positioning offsets and center the expanded module */
+.tables-stage.expanded .spot {
+  left: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+}
+
+/* Make sure the expanded layout centers nicely */
+.tables-stage.expanded #spotsGrid {
+  display: flex;
+  justify-content: center;
+}
+
+/* If you want it top-aligned instead of centered vertically, keep it simple */
+.tables-stage.expanded #spotsGrid {
+  align-items: flex-start;
+}
+
+.tables-stage.expanded {
+  height: auto;
+  overflow: visible;
+  padding: 16px;
+}
+
+.tables-stage.expanded #spotsGrid {
+  position: static;
+}
+
+.tables-stage.expanded .spot {
+  position: relative;
+  transform: none;
+  width: min(var(--expanded-width), 100%);
+  height: auto;
+  margin: 0 auto;
+}
+
+/* Hide table sprite when expanded (keeps focus on thread) */
+.tables-stage.expanded .spot::before {
+  display: none;
+}
+
+/* Hide other spots entirely when expanded (JS toggles .hidden) */
+.spot.hidden {
+  display: none;
+}
+
+/* Full thread module container */
+.thread-full {
+  border: 1px solid var(--border);
+  padding: 12px;
+  box-shadow: 0 0 14px rgba(0,255,0,0.16);
+  background: rgba(0,0,0,0.88);
+}
+
+/* Minimal top bar */
+.thread-full-bar {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: 10px;
+  gap: 12px;
+  margin-bottom: 10px;
 }
 
-.spot-title {
+.thread-full-title {
   color: var(--fg);
   text-shadow: 0 0 3px var(--fg);
 }
 
-.spot-meta {
+.thread-full-meta {
   color: var(--fg-dim);
   font-size: 0.9rem;
 }
 
-.badge {
-  border: 1px solid var(--border);
-  padding: 2px 8px;
-  color: var(--fg-dim);
-}
-
-.badge.active { color: var(--fg); }
-.badge.empty { color: var(--fg-faint); }
-
-.form {
-  display: grid;
-  gap: 10px;
-}
-
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-
-.field { display: grid; gap: 6px; }
-
-.field-label {
+.thread-back {
   color: var(--fg-faint);
-  font-size: 0.9rem;
-}
-
-input[type="text"],
-input[type="file"],
-textarea {
-  width: 100%;
-  background: transparent;
-  color: var(--fg);
-  border: 1px solid var(--border);
-  padding: 10px;
-  outline: none;
-  box-shadow: 0 0 10px rgba(0, 255, 0, 0.07) inset;
-}
-
-textarea {
-  resize: vertical;
-  min-height: 72px;
-}
-
-.actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.btn {
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--fg);
-  padding: 8px 10px;
   cursor: pointer;
-  box-shadow: 0 0 10px rgba(0, 255, 0, 0.12);
+  user-select: none;
 }
-
-.btn:hover { box-shadow: 0 0 18px rgba(0, 255, 0, 0.18); }
-
-.btn-ghost { color: var(--fg-dim); }
-
-.btn-danger {
-  border-color: rgba(255, 80, 80, 0.55);
-  color: var(--danger);
-  box-shadow: 0 0 10px rgba(255, 80, 80, 0.12);
-}
-
-.btn-danger:hover { box-shadow: 0 0 18px rgba(255, 80, 80, 0.18); }
+.thread-back:hover { text-shadow: 0 0 6px var(--fg); }
 
 .divider {
   height: 1px;
   background: var(--border);
-  margin: 8px 0;
+  margin: 10px 0;
 }
 
 .posts {
@@ -201,8 +383,23 @@ textarea {
   gap: 8px;
   overflow: auto;
   padding-right: 4px;
-  max-height: 260px;
+  max-height: 360px;
 }
+
+/* CRT Scrollbar styling */
+.posts::-webkit-scrollbar { width: 10px; }
+.posts::-webkit-scrollbar-track { background: #000; border-left: 1px solid var(--border); }
+.posts::-webkit-scrollbar-thumb {
+  background: linear-gradient(to bottom, rgba(0,255,0,0.6), rgba(0,255,0,0.35));
+  border: 1px solid var(--border);
+  box-shadow: 0 0 6px rgba(0,255,0,0.6);
+  border-radius: 0;
+}
+.posts::-webkit-scrollbar-thumb:hover {
+  background: rgba(0,255,0,0.8);
+  box-shadow: 0 0 10px rgba(0,255,0,0.9);
+}
+.posts { scrollbar-width: thin; scrollbar-color: rgba(0,255,0,0.6) #000; }
 
 .post {
   border: 1px solid var(--border);
@@ -232,7 +429,6 @@ textarea {
   cursor: pointer;
   user-select: none;
 }
-
 .post-no:hover { text-shadow: 0 0 6px var(--fg); }
 
 .post-body { display: grid; gap: 8px; }
@@ -248,14 +444,56 @@ textarea {
   text-decoration: none;
   border-bottom: 1px dotted var(--border);
 }
-
 .post-comment a.quote:hover { text-shadow: 0 0 6px var(--fg); }
 
 .post-image {
-  max-width: 220px;
+  max-width: 240px;
   border: 1px solid var(--border);
   display: block;
 }
+
+.form { display: grid; gap: 10px; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.field { display: grid; gap: 6px; }
+.field-label { color: var(--fg-faint); font-size: 0.9rem; }
+
+input[type="text"],
+input[type="file"],
+textarea {
+  width: 100%;
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 10px;
+  outline: none;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.07) inset;
+}
+
+textarea { resize: vertical; min-height: 72px; }
+
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg);
+  padding: 8px 10px;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.12);
+}
+.btn:hover { box-shadow: 0 0 18px rgba(0, 255, 0, 0.18); }
+
+.btn-danger {
+  border-color: rgba(255, 80, 80, 0.55);
+  color: var(--danger);
+  box-shadow: 0 0 10px rgba(255, 80, 80, 0.12);
+}
+.btn-danger:hover { box-shadow: 0 0 18px rgba(255, 80, 80, 0.18); }
 
 .footer {
   margin-top: 18px;
@@ -263,6 +501,7 @@ textarea {
   padding: 10px 14px;
   color: var(--fg-dim);
   box-shadow: 0 0 12px var(--shadow);
+  background: rgba(0,0,0,0.90);
 }
 
 .cursor {
@@ -276,68 +515,22 @@ textarea {
 
 .flicker { animation: flicker 3s infinite; }
 
-@keyframes blink {
-  from, to { background-color: transparent; }
-  50% { background-color: var(--fg); }
-}
-
+@keyframes blink { from,to { background-color: transparent; } 50% { background-color: var(--fg); } }
 @keyframes flicker {
   0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; }
   20%, 22%, 24%, 55% { opacity: 0.6; }
 }
 
-@media (max-width: 960px) {
+/* Responsive fallback */
+@media (max-width: 980px) {
   .header { grid-template-columns: 1fr; }
-  .status {
-    border-left: none;
-    border-top: 1px solid var(--border);
-    padding-left: 0;
-    padding-top: 10px;
-    min-width: auto;
-  }
+  .status { border-left: none; border-top: 1px solid var(--border); padding-left: 0; padding-top: 10px; min-width: auto; }
+  .tables-stage { height: auto; overflow: visible; padding: 14px; }
+  #spotsGrid { position: static; display: grid; grid-template-columns: 1fr; gap: 14px; }
+  .spot { position: relative; transform: none; margin: 0 auto; }
 }
 
 @media (max-width: 760px) {
-  .spots-grid { grid-template-columns: 1fr; }
   .form-row { grid-template-columns: 1fr; }
-}
-
-/* ===========================
-   CRT Scrollbar Styling
-   =========================== */
-
-/* For WebKit browsers (Chrome, Edge, Safari) */
-.posts::-webkit-scrollbar {
-  width: 10px;
-}
-
-.posts::-webkit-scrollbar-track {
-  background: #000;
-  border-left: 1px solid var(--border);
-}
-
-.posts::-webkit-scrollbar-thumb {
-  background: linear-gradient(
-    to bottom,
-    rgba(0,255,0,0.6),
-    rgba(0,255,0,0.35)
-  );
-  border: 1px solid var(--border);
-  box-shadow: 0 0 6px rgba(0,255,0,0.6);
-}
-
-.posts::-webkit-scrollbar-thumb:hover {
-  background: rgba(0,255,0,0.8);
-  box-shadow: 0 0 10px rgba(0,255,0,0.9);
-}
-
-/* Optional: square corners (no rounding) */
-.posts::-webkit-scrollbar-thumb {
-  border-radius: 0;
-}
-
-/* Firefox */
-.posts {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(0,255,0,0.6) #000;
+  :root { --preview-width: 260px; }
 }
