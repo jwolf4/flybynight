@@ -301,3 +301,43 @@ textarea {
   .spots-grid { grid-template-columns: 1fr; }
   .form-row { grid-template-columns: 1fr; }
 }
+
+/* ===========================
+   CRT Scrollbar Styling
+   =========================== */
+
+/* For WebKit browsers (Chrome, Edge, Safari) */
+.posts::-webkit-scrollbar {
+  width: 10px;
+}
+
+.posts::-webkit-scrollbar-track {
+  background: #000;
+  border-left: 1px solid var(--border);
+}
+
+.posts::-webkit-scrollbar-thumb {
+  background: linear-gradient(
+    to bottom,
+    rgba(0,255,0,0.6),
+    rgba(0,255,0,0.35)
+  );
+  border: 1px solid var(--border);
+  box-shadow: 0 0 6px rgba(0,255,0,0.6);
+}
+
+.posts::-webkit-scrollbar-thumb:hover {
+  background: rgba(0,255,0,0.8);
+  box-shadow: 0 0 10px rgba(0,255,0,0.9);
+}
+
+/* Optional: square corners (no rounding) */
+.posts::-webkit-scrollbar-thumb {
+  border-radius: 0;
+}
+
+/* Firefox */
+.posts {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,255,0,0.6) #000;
+}
