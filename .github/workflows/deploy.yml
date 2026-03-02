@@ -1,0 +1,12 @@
+name: Deploy to home server
+
+on:
+  push:
+    branches: [ "master" ]
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, x64, flybynight-prod]
+    steps:
+      - name: Deploy
+        run: /usr/local/bin/flybynight-deploy.sh
