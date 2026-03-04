@@ -708,3 +708,58 @@ setInterval(() => {
     if (!document.hidden) start();
   });
 })();
+
+(() => {
+  const btn = document.getElementById("btnToggleStream");
+  const status = document.getElementById("pubStatus");
+
+  // SRS publish URL. Note: webrtc:// (SRS uses HTTPS signaling under the hood)
+  const PUBLISH_URL = `webrtc://${location.host}/live/live`;
+
+  let publisher = null; // SRSPublisher from srs.sdk.js
+
+  function setState(on, msg) {
+    btn.textContent = on ? "Stop Streaming" : "Start Streaming";
+    status.textContent = msg || "";
+  }
+
+  async function start() {
+    setState(true, "Requesting camera/mic…");
+
+    try {
+      // Create publisher
+      publisher = new SrsRtcPublisherAsync();
+
+      // Ask for cam/mic and publish
+      await publisher.publish(PUBLISH_URL);
+
+      setState(true, "Live. Click Stop Streaming to end.");
+    } catch (e) {
+      console.error(e);
+      await stop(true);
+      setState(false, `Failed to start: ${e?.message || e}`);
+    }
+  }
+
+  async function stop(silent) {
+    try {
+      if (publisher) {
+        // Close peer connection + stop tracks
+        await publisher.close();
+      }
+    } catch (e) {
+      if (!silent) console.warn("stop error", e);
+    } finally {
+      publisher = null;
+      if (!silent) setState(false, "Stopped.");
+      else setState(false, "");
+    }
+  }
+
+  btn.addEventListener("click", async () => {
+    if (!publisher) await start();
+    else await stop(false);
+  });
+
+  setState(false, "Offline.");
+})();

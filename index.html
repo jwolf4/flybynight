@@ -57,8 +57,8 @@
 
       <div id="live-overlay" class="live-overlay">
         <div class="live-overlay-inner">
-          <div class="live-overlay-title">No live stream</div>
-          <div class="live-overlay-sub">If someone starts streaming, this will wake up.</div>
+          <button id="btnToggleStream" class="btn">Start Streaming</button>
+<div id="pubStatus" class="hint"></div>
         </div>
       </div>
     </div>
@@ -90,5 +90,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
   <script src="app.js"></script>
+  <script src="/players/js/srs.sdk.js"></script>
 </body>
 </html>
