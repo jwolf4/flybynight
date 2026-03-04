@@ -545,6 +545,7 @@ setInterval(() => {
   const setStatus = (text, showOverlay) => {
     statusEl.textContent = text;
     overlay.classList.toggle("hidden", !showOverlay);
+    video.classList.toggle("stream-hidden", showOverlay);
   };
 
   const bust = () => `${BASE_HLS_URL}?_=${Date.now()}`;
@@ -571,10 +572,17 @@ setInterval(() => {
     stopStaleWatch();
     markPlaybackProgress();
     staleTimer = setInterval(() => {
-      if (video.paused || video.ended) return;
-
       const now = Date.now();
       const current = video.currentTime || 0;
+
+      const hasFutureData = video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA;
+      const likelyUserPaused = video.paused && hasFutureData && !video.ended;
+      if (likelyUserPaused) {
+        // User likely paused with buffered media available; don't force retries.
+        markPlaybackProgress();
+        return;
+      }
+
       if (current > lastCurrentTime + 0.05) {
         markPlaybackProgress();
         return;
