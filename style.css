@@ -13,11 +13,11 @@
 
   /* Layout sizing */
   --header-height: 110px; /* JS will update this */
-  --stage-height: 320px;
-  --stage-sprite-scale: 1.22;
+  --stage-height: 260px;
+  --stage-sprite-scale: 1.08;
   --stage-sprite-y: 56%;
-  --stage-video-width: min(520px, 46%);
-  --stage-video-top: 63%;
+  --stage-video-width: min(460px, 40%);
+  --stage-video-top: 62%;
 
   /* Table sizing */
   --table-width: 360px;
