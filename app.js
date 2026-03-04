@@ -527,6 +527,8 @@ setInterval(() => {
 
 (() => {
   const BASE_HLS_URL = "https://flybynight.channel/live/live.m3u8";
+  const STALE_PROGRESS_TIMEOUT_MS = 15000;
+  const STALE_CHECK_INTERVAL_MS = 3000;
 
   const video = document.getElementById("live-video");
   const statusEl = document.getElementById("live-status");
@@ -536,6 +538,9 @@ setInterval(() => {
 
   let hls = null;
   let retryTimer = null;
+  let staleTimer = null;
+  let lastProgressAt = 0;
+  let lastCurrentTime = 0;
 
   const setStatus = (text, showOverlay) => {
     statusEl.textContent = text;
@@ -544,11 +549,49 @@ setInterval(() => {
 
   const bust = () => `${BASE_HLS_URL}?_=${Date.now()}`;
 
+  const stopStaleWatch = () => {
+    if (staleTimer) {
+      clearInterval(staleTimer);
+      staleTimer = null;
+    }
+  };
+
+  const markPlaybackProgress = () => {
+    lastProgressAt = Date.now();
+    lastCurrentTime = video.currentTime || 0;
+  };
+
+  const handleStaleStream = () => {
+    setStatus("offline (stale stream, retrying...)", true);
+    cleanup();
+    scheduleRetry(2000);
+  };
+
+  const startStaleWatch = () => {
+    stopStaleWatch();
+    markPlaybackProgress();
+    staleTimer = setInterval(() => {
+      if (video.paused || video.ended) return;
+
+      const now = Date.now();
+      const current = video.currentTime || 0;
+      if (current > lastCurrentTime + 0.05) {
+        markPlaybackProgress();
+        return;
+      }
+
+      if (now - lastProgressAt >= STALE_PROGRESS_TIMEOUT_MS) {
+        handleStaleStream();
+      }
+    }, STALE_CHECK_INTERVAL_MS);
+  };
+
   const cleanup = () => {
     if (retryTimer) {
       clearTimeout(retryTimer);
       retryTimer = null;
     }
+    stopStaleWatch();
     if (hls) {
       try { hls.destroy(); } catch {}
       hls = null;
@@ -571,6 +614,7 @@ setInterval(() => {
     try {
       await video.play();
       setStatus("live", false);
+      startStaleWatch();
     } catch {
       // Autoplay might be blocked; keep overlay off once data flows
       setStatus("live (click to play)", true);
@@ -607,6 +651,7 @@ setInterval(() => {
       try {
         await video.play();
         setStatus("live", false);
+        startStaleWatch();
       } catch {
         setStatus("live (click to play)", true);
       }
@@ -642,6 +687,13 @@ setInterval(() => {
 
   // Start now
   start();
+
+  video.addEventListener("timeupdate", markPlaybackProgress);
+  video.addEventListener("playing", () => {
+    markPlaybackProgress();
+    if (!staleTimer) startStaleWatch();
+  });
+  video.addEventListener("ended", handleStaleStream);
 
   // If tab returns to foreground, refresh (helps with your sliding window)
   document.addEventListener("visibilitychange", () => {
