@@ -4,6 +4,9 @@
 
 const REFRESH_SECONDS = 10;
 const SPOT_COUNT = 5;
+const STORAGE_KEY = "flybynight.thread_state.v1";
+const STORAGE_DAY_KEY = "flybynight.thread_state.day";
+const DAY_ROLLOVER_CHECK_MS = 60 * 1000;
 
 let spots = Array.from({ length: SPOT_COUNT }, (_, i) => ({
   spotId: i + 1,
@@ -24,6 +27,80 @@ const el = {
   header: document.getElementById("header"),
   backToTablesTop: document.getElementById("backToTablesTop"),
 };
+
+function localDayStamp() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function clearStoredThreadState() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.setItem(STORAGE_DAY_KEY, localDayStamp());
+  } catch (err) {
+    console.warn("Failed clearing stored thread state:", err);
+  }
+}
+
+function ensureCurrentDayStorage() {
+  try {
+    const savedDay = localStorage.getItem(STORAGE_DAY_KEY);
+    const today = localDayStamp();
+    if (savedDay !== today) {
+      clearStoredThreadState();
+      return true;
+    }
+  } catch (err) {
+    console.warn("Failed checking storage day key:", err);
+  }
+  return false;
+}
+
+function saveThreadState() {
+  try {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        spots,
+        nextThreadId,
+        nextPostId,
+      })
+    );
+    localStorage.setItem(STORAGE_DAY_KEY, localDayStamp());
+  } catch (err) {
+    console.warn("Failed saving thread state (possibly storage quota):", err);
+  }
+}
+
+function loadThreadState() {
+  ensureCurrentDayStorage();
+
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.spots)) return;
+
+    const normalized = Array.from({ length: SPOT_COUNT }, (_, i) => {
+      const spotId = i + 1;
+      const incoming = parsed.spots.find((s) => Number(s?.spotId) === spotId);
+      return {
+        spotId,
+        thread: incoming?.thread ?? null,
+      };
+    });
+
+    spots = normalized;
+    nextThreadId = Number.isFinite(parsed.nextThreadId) ? parsed.nextThreadId : nextThreadId;
+    nextPostId = Number.isFinite(parsed.nextPostId) ? parsed.nextPostId : nextPostId;
+  } catch (err) {
+    console.warn("Failed loading thread state:", err);
+  }
+}
 
 function nowIso() {
   const d = new Date();
@@ -190,6 +267,8 @@ async function createThreadInSpot(spotId, { title, name, comment, imageFile }) {
     title: title?.trim() || defaultTitleForThread(spotId),
     posts: [opPost],
   };
+
+  saveThreadState();
 }
 
 async function addReplyToSpotThread(spotId, { name, comment, imageFile }) {
@@ -207,6 +286,7 @@ async function addReplyToSpotThread(spotId, { name, comment, imageFile }) {
   };
 
   spot.thread.posts.push(post);
+  saveThreadState();
 }
 
 function deleteThreadInSpot(spotId) {
@@ -214,6 +294,7 @@ function deleteThreadInSpot(spotId) {
   if (!spot) return;
   spot.thread = null;
   if (expandedSpotId === spotId) expandedSpotId = null;
+  saveThreadState();
 }
 
 /* ---- Rendering ---- */
@@ -222,10 +303,14 @@ function render() {
   // Snapshot BEFORE any DOM rewrite
   const snap = snapshotFormState(el.spotsGrid);
 
-  el.refreshStatus.textContent = `every ${REFRESH_SECONDS}s`;
+  if (el.refreshStatus) {
+    el.refreshStatus.textContent = `every ${REFRESH_SECONDS}s`;
+  }
 
   const activeCount = spots.filter((s) => !!s.thread).length;
-  el.spotsStatus.textContent = `${activeCount}/${SPOT_COUNT} active`;
+  if (el.spotsStatus) {
+    el.spotsStatus.textContent = `${activeCount}/${SPOT_COUNT} active`;
+  }
 
   el.tablesStage.classList.toggle("expanded", expandedSpotId !== null);
   if (el.backToTablesTop) el.backToTablesTop.classList.toggle("hidden", expandedSpotId === null);
@@ -516,14 +601,30 @@ if (el.backToTablesTop) {
 tickClock();
 setInterval(tickClock, 1000);
 
+loadThreadState();
 render();
 
 // IMPORTANT: don't erase in-progress typing or selected files on refresh tick
 setInterval(() => {
   if (hasSelectedFile(el.spotsGrid)) return;
   if (isUserTypingIn(el.spotsGrid)) return;
+  if (ensureCurrentDayStorage()) {
+    spots = Array.from({ length: SPOT_COUNT }, (_, i) => ({ spotId: i + 1, thread: null }));
+    nextThreadId = 1;
+    nextPostId = 100;
+    expandedSpotId = null;
+  }
   render();
 }, REFRESH_SECONDS * 1000);
+
+setInterval(() => {
+  if (!ensureCurrentDayStorage()) return;
+  spots = Array.from({ length: SPOT_COUNT }, (_, i) => ({ spotId: i + 1, thread: null }));
+  nextThreadId = 1;
+  nextPostId = 100;
+  expandedSpotId = null;
+  render();
+}, DAY_ROLLOVER_CHECK_MS);
 
 (() => {
   const HLS_CANDIDATES = Array.from(new Set([

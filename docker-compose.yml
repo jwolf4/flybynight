@@ -82,3 +82,10 @@ services:
         janitor &
         exec ./objs/srs -c conf/rtmp2rtc.conf
       '
+    depends_on:
+      - control
+  control:
+    build: ./control
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8090:8090"
