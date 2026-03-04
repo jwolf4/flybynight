@@ -15,8 +15,9 @@
   --header-height: 110px; /* JS will update this */
   --stage-height: 260px;
   --stage-sprite-scale: 1.08;
+  --stage-sprite-max-width: 500px;
   --stage-sprite-y: 56%;
-  --stage-video-width: 40%;
+  --stage-video-width: min(72vw, calc(var(--stage-sprite-max-width) * 0.78));
   --stage-video-top: 62%;
 
   /* Table sizing */
@@ -138,8 +139,7 @@ body {
   left: 50%;
   top: var(--stage-sprite-y);
   height: auto;
-  width: calc(100% * var(--stage-sprite-scale));
-  max-width: none;
+  width: min(calc(100% * var(--stage-sprite-scale)), var(--stage-sprite-max-width));
   transform: translate(-50%, -50%);
   image-rendering: pixelated;
   pointer-events: none;
