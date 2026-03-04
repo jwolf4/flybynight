@@ -526,7 +526,11 @@ setInterval(() => {
 }, REFRESH_SECONDS * 1000);
 
 (() => {
-  const BASE_HLS_URL = "https://flybynight.channel/live/live.m3u8";
+  const HLS_CANDIDATES = Array.from(new Set([
+    `${location.protocol}//${location.host}/live/live.m3u8`,
+    `${location.protocol}//${location.hostname}:8088/live/live.m3u8`,
+    "https://flybynight.channel/live/live.m3u8",
+  ]));
   const STALE_PROGRESS_TIMEOUT_MS = 15000;
   const STALE_CHECK_INTERVAL_MS = 3000;
 
@@ -541,6 +545,7 @@ setInterval(() => {
   let staleTimer = null;
   let lastProgressAt = 0;
   let lastCurrentTime = 0;
+  let activeHlsUrl = HLS_CANDIDATES[0];
 
   const setStatus = (text, showOverlay) => {
     statusEl.textContent = text;
@@ -548,7 +553,21 @@ setInterval(() => {
     video.classList.toggle("stream-hidden", showOverlay);
   };
 
-  const bust = () => `${BASE_HLS_URL}?_=${Date.now()}`;
+  const bust = (url = activeHlsUrl) => `${url}${url.includes("?") ? "&" : "?"}_=${Date.now()}`;
+
+  const selectPlayableHlsUrl = async () => {
+    for (const candidate of HLS_CANDIDATES) {
+      try {
+        const r = await fetch(bust(candidate), { method: "GET", cache: "no-store" });
+        if (!r.ok) continue;
+        activeHlsUrl = candidate;
+        return true;
+      } catch {
+        // Try next candidate URL.
+      }
+    }
+    return false;
+  };
 
   const stopStaleWatch = () => {
     if (staleTimer) {
@@ -672,12 +691,8 @@ setInterval(() => {
   const start = async () => {
     // Quick “is there a stream?” probe:
     // If 404, don’t spin up hls.js, just show offline and retry.
-    setStatus("checking…", true);
-    try {
-      const r = await fetch(bust(), { method: "GET", cache: "no-store" });
-      if (!r.ok) throw new Error(`HLS ${r.status}`);
-      // If it returns master playlist, still fine — hls.js handles.
-    } catch {
+    setStatus("checking...", true);
+    if (!(await selectPlayableHlsUrl())) {
       setStatus("offline", true);
       scheduleRetry(4000);
       return;
@@ -712,6 +727,8 @@ setInterval(() => {
 (() => {
   const btn = document.getElementById("btnToggleStream");
   const status = document.getElementById("pubStatus");
+  const preview = document.getElementById("pub-preview");
+  if (!btn || !status) return;
 
   // SRS publish URL. Note: webrtc:// (SRS uses HTTPS signaling under the hood)
   const PUBLISH_URL = `webrtc://${location.host}/live/live`;
@@ -721,6 +738,13 @@ setInterval(() => {
   function setState(on, msg) {
     btn.textContent = on ? "Stop Streaming" : "Start Streaming";
     status.textContent = msg || "";
+  }
+
+  function setPreview(stream) {
+    if (!preview) return;
+    preview.srcObject = stream || null;
+    preview.classList.toggle("hidden", !stream);
+    if (stream) preview.play().catch(() => {});
   }
 
   async function start() {
@@ -733,7 +757,8 @@ setInterval(() => {
       // Ask for cam/mic and publish
       await publisher.publish(PUBLISH_URL);
 
-      setState(true, "Live. Click Stop Streaming to end.");
+      setPreview(publisher.stream || null);
+      setState(true, "Publishing. Stage playback may take a few seconds.");
     } catch (e) {
       console.error(e);
       await stop(true);
@@ -751,6 +776,7 @@ setInterval(() => {
       if (!silent) console.warn("stop error", e);
     } finally {
       publisher = null;
+      setPreview(null);
       if (!silent) setState(false, "Stopped.");
       else setState(false, "");
     }
@@ -763,3 +789,4 @@ setInterval(() => {
 
   setState(false, "Offline.");
 })();
+

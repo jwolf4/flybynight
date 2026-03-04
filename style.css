@@ -194,6 +194,13 @@ body {
 .live-overlay-title { font-size: 1.1em; margin-bottom: 6px; }
 .live-overlay-sub { font-size: 0.95em; opacity: 0.85; }
 .live-overlay.hidden { display: none; pointer-events: none; }
+#pub-preview {
+  display: block;
+  width: min(360px, 72vw);
+  margin: 10px auto 8px;
+  border: 1px solid rgba(0, 255, 0, 0.35);
+  background: #000;
+}
 
 /* ---------- MAIN SHELL ---------- */
 
