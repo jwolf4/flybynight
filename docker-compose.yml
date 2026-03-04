@@ -1,0 +1,86 @@
+version: "3.8"
+
+services:
+  srs:
+    image: ossrs/srs:5
+    container_name: srs
+    restart: unless-stopped
+
+    ports:
+      - "1935:1935"
+      - "1985:1985"
+      - "8088:8080"
+      - "8000:8000/udp"
+
+    environment:
+      CANDIDATE: "flybynight.channel"
+
+      # Janitor tuning
+      JANITOR_API: "http://127.0.0.1:1985/api/v1/streams/"
+      JANITOR_HLS_DIR: "/usr/local/srs/objs/nginx/html/live"
+      JANITOR_INTERVAL_SEC: "2"
+      JANITOR_GRACE_SEC: "4"
+      JANITOR_COOLDOWN_SEC: "10"
+
+    volumes:
+      - /var/www/flybynight/conf/rtmp2rtc.conf:/usr/local/srs/conf/rtmp2rtc.conf:ro
+
+    command: >
+      sh -lc '
+        set -euo pipefail
+
+        HLS_DIR="${JANITOR_HLS_DIR:-/usr/local/srs/objs/nginx/html/live}"
+        API="${JANITOR_API:-http://127.0.0.1:1985/api/v1/streams/}"
+
+        INTERVAL="${JANITOR_INTERVAL_SEC:-2}"
+        GRACE="${JANITOR_GRACE_SEC:-4}"
+        COOLDOWN="${JANITOR_COOLDOWN_SEC:-10}"
+
+        log(){ echo "[janitor] $(date -Iseconds) $*"; }
+
+        clear_hls(){
+          rm -rf "$HLS_DIR"/* 2>/dev/null || true
+        }
+
+        hls_nonempty(){
+          [ -d "$HLS_DIR" ] && [ "$(ls -A "$HLS_DIR" 2>/dev/null | wc -l)" -gt 0 ]
+        }
+
+        # Conservative: if API fails/empty response, assume "live" to avoid accidental clears at startup.
+        is_any_publishing(){
+          payload="$(curl -fsS "$API" 2>/dev/null || true)"
+          [ -n "$payload" ] || return 0
+          echo "$payload" | grep -q "\"publish\"[[:space:]]*:[[:space:]]*true"
+        }
+
+        janitor(){
+          log "starting interval=${INTERVAL}s grace=${GRACE}s cooldown=${COOLDOWN}s hls_dir=${HLS_DIR} api=${API}"
+          last_live_ts="$(date +%s)"
+          last_clear_ts=0
+
+          while true; do
+            now="$(date +%s)"
+
+            if is_any_publishing; then
+              last_live_ts="$now"
+            else
+              offline_for=$((now - last_live_ts))
+              since_clear=$((now - last_clear_ts))
+
+              if [ "$offline_for" -ge "$GRACE" ] && hls_nonempty && [ "$since_clear" -ge "$COOLDOWN" ]; then
+                log "no publishers for ${offline_for}s -> clearing HLS"
+                clear_hls
+                last_clear_ts="$now"
+              fi
+            fi
+
+            sleep "$INTERVAL"
+          done
+        }
+
+        log "boot clear"
+        clear_hls || true
+
+        janitor &
+        exec ./objs/srs -c conf/rtmp2rtc.conf
+      '
