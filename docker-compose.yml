@@ -1,84 +1,59 @@
-services:
-  srs:
-    image: ossrs/srs:5
-    container_name: srs
-    restart: unless-stopped
+command: >
+  sh -lc '
+    set -eu
 
-    ports:
-      - "1935:1935"
-      - "1985:1985"
-      - "8088:8080"
-      - "8000:8000/udp"
+    HLS_DIR="$${JANITOR_HLS_DIR:-/usr/local/srs/objs/nginx/html/live}"
+    API="$${JANITOR_API:-http://127.0.0.1:1985/api/v1/streams/}"
 
-    environment:
-      CANDIDATE: "flybynight.channel"
+    INTERVAL="$${JANITOR_INTERVAL_SEC:-2}"
+    GRACE="$${JANITOR_GRACE_SEC:-4}"
+    COOLDOWN="$${JANITOR_COOLDOWN_SEC:-10}"
 
-      # Janitor tuning
-      JANITOR_API: "http://127.0.0.1:1985/api/v1/streams/"
-      JANITOR_HLS_DIR: "/usr/local/srs/objs/nginx/html/live"
-      JANITOR_INTERVAL_SEC: "2"
-      JANITOR_GRACE_SEC: "4"
-      JANITOR_COOLDOWN_SEC: "10"
+    log(){ echo "[janitor] $$(date -Iseconds) $$*"; }
 
-    volumes:
-      - ./conf/rtmp2rtc.conf:/usr/local/srs/conf/rtmp2rtc.conf:ro
+    clear_hls(){
+      rm -rf "$$HLS_DIR"/* 2>/dev/null || true
+    }
 
-    command: >
-      sh -lc '
-        set -euo pipefail
+    hls_nonempty(){
+      [ -d "$$HLS_DIR" ] && [ "$$(ls -A "$$HLS_DIR" 2>/dev/null | wc -l)" -gt 0 ]
+    }
 
-        HLS_DIR="$${JANITOR_HLS_DIR:-/usr/local/srs/objs/nginx/html/live}"
-        API="$${JANITOR_API:-http://127.0.0.1:1985/api/v1/streams/}"
+    is_any_publishing(){
+      payload="$$(curl -fsS "$$API" 2>/dev/null || true)"
+      [ -n "$$payload" ] || return 0
+      echo "$$payload" | grep -q "\"publish\"[[:space:]]*:[[:space:]]*true"
+    }
 
-        INTERVAL="$${JANITOR_INTERVAL_SEC:-2}"
-        GRACE="$${JANITOR_GRACE_SEC:-4}"
-        COOLDOWN="$${JANITOR_COOLDOWN_SEC:-10}"
+    janitor(){
+      log "starting interval=$$INTERVAL grace=$$GRACE cooldown=$$COOLDOWN hls_dir=$$HLS_DIR api=$$API"
 
-        log(){ echo "[janitor] $$(date -Iseconds) $$*"; }
+      last_live_ts="$$(date +%s)"
+      last_clear_ts=0
 
-        clear_hls(){
-          rm -rf "$$HLS_DIR"/* 2>/dev/null || true
-        }
+      while true; do
+        now="$$(date +%s)"
 
-        hls_nonempty(){
-          [ -d "$$HLS_DIR" ] && [ "$$(ls -A "$$HLS_DIR" 2>/dev/null | wc -l)" -gt 0 ]
-        }
+        if is_any_publishing; then
+          last_live_ts="$$now"
+        else
+          offline_for=$$((now - last_live_ts))
+          since_clear=$$((now - last_clear_ts))
 
-        is_any_publishing(){
-          payload="$$(curl -fsS "$$API" 2>/dev/null || true)"
-          [ -n "$$payload" ] || return 0
-          echo "$$payload" | grep -q "\"publish\"[[:space:]]*:[[:space:]]*true"
-        }
+          if [ "$$offline_for" -ge "$$GRACE" ] && hls_nonempty && [ "$$since_clear" -ge "$$COOLDOWN" ]; then
+            log "no publishers for $${offline_for}s -> clearing HLS"
+            clear_hls
+            last_clear_ts="$$now"
+          fi
+        fi
 
-        janitor(){
-          log "starting interval=$$INTERVAL grace=$$GRACE cooldown=$$COOLDOWN hls_dir=$$HLS_DIR api=$$API"
+        sleep "$$INTERVAL"
+      done
+    }
 
-          last_live_ts="$$(date +%s)"
-          last_clear_ts=0
+    log "boot clear"
+    clear_hls || true
 
-          while true; do
-            now="$$(date +%s)"
-
-            if is_any_publishing; then
-              last_live_ts="$$now"
-            else
-              offline_for=$$((now - last_live_ts))
-              since_clear=$$((now - last_clear_ts))
-
-              if [ "$$offline_for" -ge "$$GRACE" ] && hls_nonempty && [ "$$since_clear" -ge "$$COOLDOWN" ]; then
-                log "no publishers for $${offline_for}s -> clearing HLS"
-                clear_hls
-                last_clear_ts="$$now"
-              fi
-            fi
-
-            sleep "$$INTERVAL"
-          done
-        }
-
-        log "boot clear"
-        clear_hls || true
-
-        janitor &
-        exec ./objs/srs -c conf/rtmp2rtc.conf
-      '
+    janitor &
+    exec ./objs/srs -c conf/rtmp2rtc.conf
+  '
