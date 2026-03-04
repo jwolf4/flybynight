@@ -1,5 +1,5 @@
-/**
- * Fly By Night — 5 thread-spots w/ preview + expanded thread view (in-memory only)
+﻿/**
+ * Fly By Night â€” 5 thread-spots w/ preview + expanded thread view (in-memory only)
  */
 
 const REFRESH_SECONDS = 10;
@@ -152,7 +152,7 @@ async function fileToDataUrl(file) {
 function snippet(text, max = 140) {
   const s = String(text ?? "").trim().replace(/\s+/g, " ");
   if (s.length <= max) return s;
-  return s.slice(0, max - 1) + "…";
+  return s.slice(0, max - 1) + "â€¦";
 }
 
 function defaultTitleForThread(spotId) {
@@ -352,11 +352,11 @@ function renderSpot(spot, { hidden, expanded }) {
             <div class="thread-full-title">${escapeHtml(spot.thread?.title ?? defaultTitleForThread(spot.spotId))}</div>
             <div class="thread-full-meta">${
               spot.thread
-                ? `#${spot.thread.threadId} — ${escapeHtml(spot.thread.createdAt)} — posts ${spot.thread.posts.length}`
+                ? `#${spot.thread.threadId} â€” ${escapeHtml(spot.thread.createdAt)} â€” posts ${spot.thread.posts.length}`
                 : `EMPTY`
             }</div>
           </div>
-          <div class="thread-back" data-action="back-to-tables">← back to tables</div>
+          <div class="thread-back" data-action="back-to-tables">â† back to tables</div>
         </div>
 
         <div class="divider"></div>
@@ -724,7 +724,7 @@ setInterval(() => {
       try { hls.destroy(); } catch {}
       hls = null;
     }
-    // Don’t keep old sources around
+    // Donâ€™t keep old sources around
     video.removeAttribute("src");
     video.load();
   };
@@ -736,7 +736,7 @@ setInterval(() => {
 
   const startNative = async () => {
     cleanup();
-    setStatus("live: connecting…", true);
+    setStatus("live: connectingâ€¦", true);
 
     video.src = bust();
     try {
@@ -750,14 +750,14 @@ setInterval(() => {
 
     // If it errors (stream offline), retry
     video.onerror = () => {
-      setStatus("offline (retrying…)", true);
+      setStatus("offline (retryingâ€¦)", true);
       scheduleRetry(4000);
     };
   };
 
   const startHlsJs = () => {
     cleanup();
-    setStatus("live: connecting…", true);
+    setStatus("live: connectingâ€¦", true);
 
     hls = new Hls({
       // Low-latency not required for you; keep it stable
@@ -769,7 +769,7 @@ setInterval(() => {
     hls.on(Hls.Events.ERROR, (_evt, data) => {
       // Network/media errors: treat as offline and retry
       if (data && data.fatal) {
-        setStatus("offline (retrying…)", true);
+        setStatus("offline (retryingâ€¦)", true);
         cleanup();
         scheduleRetry(4000);
       }
@@ -790,8 +790,8 @@ setInterval(() => {
   };
 
   const start = async () => {
-    // Quick “is there a stream?” probe:
-    // If 404, don’t spin up hls.js, just show offline and retry.
+    // Quick â€œis there a stream?â€ probe:
+    // If 404, donâ€™t spin up hls.js, just show offline and retry.
     setStatus("checking...", true);
     if (!(await selectPlayableHlsUrl())) {
       setStatus("offline", true);
@@ -833,6 +833,8 @@ setInterval(() => {
 
   // SRS publish URL. Note: webrtc:// (SRS uses HTTPS signaling under the hood)
   const PUBLISH_URL = `webrtc://${location.host}/live/live`;
+  const LOCK_STATUS_URL = `${location.protocol}//${location.host}/control/status`;
+  const LOCK_POLL_MS = 2000;
 
   let publisher = null; // SRSPublisher from srs.sdk.js
 
@@ -848,8 +850,58 @@ setInterval(() => {
     if (stream) preview.play().catch(() => {});
   }
 
+  async function fetchLiveLock() {
+    const r = await fetch(`${LOCK_STATUS_URL}?_=${Date.now()}`, { cache: "no-store" });
+    if (!r.ok) throw new Error(`lock status ${r.status}`);
+    const data = await r.json();
+    return !!data?.live;
+  }
+
+  async function syncStartAvailability() {
+    if (publisher) {
+      btn.classList.remove("hidden");
+      btn.disabled = false;
+      return;
+    }
+
+    try {
+      const live = await fetchLiveLock();
+      if (live) {
+        btn.classList.add("hidden");
+        btn.disabled = true;
+        setState(false, "Live now. Viewing only.");
+      } else {
+        btn.classList.remove("hidden");
+        btn.disabled = false;
+        if (!status.textContent || status.textContent === "Live now. Viewing only.") {
+          setState(false, "Offline.");
+        }
+      }
+    } catch {
+      // Fail closed in UI, while hooks still enforce lock server-side.
+      btn.classList.add("hidden");
+      btn.disabled = true;
+      setState(false, "Checking stream status...");
+    }
+  }
+
   async function start() {
-    setState(true, "Requesting camera/mic…");
+    try {
+      const live = await fetchLiveLock();
+      if (live) {
+        btn.classList.add("hidden");
+        btn.disabled = true;
+        setState(false, "Another client is live.");
+        return;
+      }
+    } catch {
+      setState(false, "Cannot verify live status.");
+      return;
+    }
+
+    btn.classList.remove("hidden");
+    btn.disabled = false;
+    setState(true, "Requesting camera/mic...");
 
     try {
       // Create publisher
@@ -864,6 +916,7 @@ setInterval(() => {
       console.error(e);
       await stop(true);
       setState(false, `Failed to start: ${e?.message || e}`);
+      await syncStartAvailability();
     }
   }
 
@@ -880,6 +933,7 @@ setInterval(() => {
       setPreview(null);
       if (!silent) setState(false, "Stopped.");
       else setState(false, "");
+      await syncStartAvailability();
     }
   }
 
@@ -888,6 +942,7 @@ setInterval(() => {
     else await stop(false);
   });
 
-  setState(false, "Offline.");
+  setState(false, "Checking stream status...");
+  syncStartAvailability();
+  setInterval(syncStartAvailability, LOCK_POLL_MS);
 })();
-
