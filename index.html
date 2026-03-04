@@ -38,7 +38,32 @@
       <img class="stage-sprite" src="stage.png" alt="Stage" />
       <div class="stage-video" aria-label="Video placeholder">
         <div class="stage-video-inner flicker subtle">
-          VIDEO PLACEHOLDER
+          <section id="live" class="panel">
+  <div class="live-wrap">
+    <div class="live-header">
+      <div class="live-title">LIVE</div>
+      <div id="live-status" class="live-status">checking…</div>
+    </div>
+
+    <div class="live-video">
+      <video
+        id="live-video"
+        playsinline
+        muted
+        autoplay
+        controls
+        preload="none"
+      ></video>
+
+      <div id="live-overlay" class="live-overlay">
+        <div class="live-overlay-inner">
+          <div class="live-overlay-title">No live stream</div>
+          <div class="live-overlay-sub">If someone starts streaming, this will wake up.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
         </div>
       </div>
 <button id="backToTablesTop" class="stage-back hidden" type="button">
@@ -63,6 +88,7 @@
     </footer>
   </main>
 
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
   <script src="app.js"></script>
 </body>
 </html>

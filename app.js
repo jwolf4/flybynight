@@ -524,3 +524,127 @@ setInterval(() => {
   if (isUserTypingIn(el.spotsGrid)) return;
   render();
 }, REFRESH_SECONDS * 1000);
+
+(() => {
+  const BASE_HLS_URL = "https://flybynight.channel/live/live.m3u8";
+
+  const video = document.getElementById("live-video");
+  const statusEl = document.getElementById("live-status");
+  const overlay = document.getElementById("live-overlay");
+
+  if (!video || !statusEl || !overlay) return;
+
+  let hls = null;
+  let retryTimer = null;
+
+  const setStatus = (text, showOverlay) => {
+    statusEl.textContent = text;
+    overlay.classList.toggle("hidden", !showOverlay);
+  };
+
+  const bust = () => `${BASE_HLS_URL}?_=${Date.now()}`;
+
+  const cleanup = () => {
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+    if (hls) {
+      try { hls.destroy(); } catch {}
+      hls = null;
+    }
+    // Don’t keep old sources around
+    video.removeAttribute("src");
+    video.load();
+  };
+
+  const scheduleRetry = (ms = 4000) => {
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => start(), ms);
+  };
+
+  const startNative = async () => {
+    cleanup();
+    setStatus("live: connecting…", true);
+
+    video.src = bust();
+    try {
+      await video.play();
+      setStatus("live", false);
+    } catch {
+      // Autoplay might be blocked; keep overlay off once data flows
+      setStatus("live (click to play)", true);
+    }
+
+    // If it errors (stream offline), retry
+    video.onerror = () => {
+      setStatus("offline (retrying…)", true);
+      scheduleRetry(4000);
+    };
+  };
+
+  const startHlsJs = () => {
+    cleanup();
+    setStatus("live: connecting…", true);
+
+    hls = new Hls({
+      // Low-latency not required for you; keep it stable
+      enableWorker: true,
+      lowLatencyMode: false,
+      backBufferLength: 30,
+    });
+
+    hls.on(Hls.Events.ERROR, (_evt, data) => {
+      // Network/media errors: treat as offline and retry
+      if (data && data.fatal) {
+        setStatus("offline (retrying…)", true);
+        cleanup();
+        scheduleRetry(4000);
+      }
+    });
+
+    hls.on(Hls.Events.MANIFEST_PARSED, async () => {
+      try {
+        await video.play();
+        setStatus("live", false);
+      } catch {
+        setStatus("live (click to play)", true);
+      }
+    });
+
+    hls.loadSource(bust());
+    hls.attachMedia(video);
+  };
+
+  const start = async () => {
+    // Quick “is there a stream?” probe:
+    // If 404, don’t spin up hls.js, just show offline and retry.
+    setStatus("checking…", true);
+    try {
+      const r = await fetch(bust(), { method: "GET", cache: "no-store" });
+      if (!r.ok) throw new Error(`HLS ${r.status}`);
+      // If it returns master playlist, still fine — hls.js handles.
+    } catch {
+      setStatus("offline", true);
+      scheduleRetry(4000);
+      return;
+    }
+
+    // Choose native HLS where available (Safari), otherwise hls.js
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      startNative();
+    } else if (window.Hls && window.Hls.isSupported()) {
+      startHlsJs();
+    } else {
+      setStatus("HLS not supported in this browser", true);
+    }
+  };
+
+  // Start now
+  start();
+
+  // If tab returns to foreground, refresh (helps with your sliding window)
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) start();
+  });
+})();
