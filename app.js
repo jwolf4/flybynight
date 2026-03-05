@@ -361,7 +361,7 @@ async function addReplyToSpotThread(spotId, { name, comment, imageFile }) {
   const imageDataUrl = await fileToDataUrl(imageFile);
 
   try {
-    await apiFetch(`/spots/${spotId}/reply`, {
+    await apiFetch(`/spots/${spotId}messages`, {
       method: "POST",
       body: {
         name: name?.trim() || "Anonymous",
