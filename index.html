@@ -74,7 +74,97 @@
     </footer>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@1"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.18"></script>
+  <script>
+  function attachHls(video, src) {
+    // Cache-bust the playlist URL to defeat any intermediate caching.
+    const url = src + (src.includes('?') ? '&' : '?') + 't=' + Date.now();
+
+    const hls = new Hls({
+      // Make it stop retrying forever (defaults are very patient).
+      manifestLoadingMaxRetry: 2,
+      levelLoadingMaxRetry: 2,
+      fragLoadingMaxRetry: 2,
+
+      manifestLoadingRetryDelay: 500,
+      levelLoadingRetryDelay: 500,
+      fragLoadingRetryDelay: 500,
+
+      // Keep live latency/buffer small so "stale replay" is minimal.
+      liveSyncDuration: 3,          // seconds behind live edge
+      liveMaxLatencyDuration: 6,    // if it drifts, catch up
+      maxBufferLength: 6,           // cap buffer (seconds)
+      backBufferLength: 0
+    });
+
+    let stallTimer = null;
+    let lastTime = 0;
+    let lastProgressAt = Date.now();
+
+    function hardStop(reason) {
+      console.log('[HLS] offline:', reason);
+
+      // Stop network + detach
+      try { hls.stopLoad(); } catch {}
+      try { hls.detachMedia(); } catch {}
+      try { hls.destroy(); } catch {}
+
+      // Clear the element buffer so it can't "replay the last bit"
+      try {
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+      } catch {}
+
+      // Your UI hook: show "offline / start stream" state here
+      // setOfflineUI(true);
+    }
+
+    // If playback time isn't advancing for ~4s while we think we're playing, declare offline.
+    function startStallWatch() {
+      clearInterval(stallTimer);
+      lastTime = video.currentTime || 0;
+      lastProgressAt = Date.now();
+
+      stallTimer = setInterval(() => {
+        const t = video.currentTime || 0;
+        const advancing = t > lastTime + 0.05;
+        if (advancing) {
+          lastTime = t;
+          lastProgressAt = Date.now();
+          return;
+        }
+        const stuckMs = Date.now() - lastProgressAt;
+        if (!video.paused && stuckMs > 4000) hardStop('stalled >4s');
+      }, 500);
+    }
+
+    hls.on(Hls.Events.ERROR, (event, data) => {
+      // Treat these as terminal for your "single stream" experience.
+      const fatal =
+        data.fatal ||
+        data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR ||
+        data.details === Hls.ErrorDetails.LEVEL_LOAD_ERROR ||
+        data.details === Hls.ErrorDetails.FRAG_LOAD_ERROR;
+
+      if (fatal) hardStop(data.details || 'fatal error');
+    });
+
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      video.play().catch(() => {});
+      startStallWatch();
+    });
+
+    hls.loadSource(url);
+    hls.attachMedia(video);
+
+    // Also restart stall watch whenever playback resumes
+    video.addEventListener('playing', startStallWatch);
+    video.addEventListener('pause', () => clearInterval(stallTimer));
+
+    return hls;
+  }
+</script>
   <script src="/players/js/srs.sdk.js"></script>
   <script src="app.js"></script>
 </body>

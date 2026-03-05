@@ -89,3 +89,35 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8090:8090"
+  redis:
+    image: redis:7-alpine
+    container_name: flybynight-redis
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+  cleanup:
+    image: alpine:3
+    container_name: flybynight-cleanup
+    restart: unless-stopped
+    depends_on:
+      - redis
+    volumes:
+      - ./scripts/nightly-clean.sh:/cleanup.sh:ro
+      - /srv/flybynight/media:/media
+    command: >
+      sh -c "
+      apk add --no-cache redis;
+      while true; do
+        now=$(date +%H:%M);
+        if [ \"$now\" = \"02:00\" ]; then
+          /cleanup.sh;
+          sleep 60;
+        fi;
+        sleep 10;
+      done
+      "
+volumes:
+  redis-data:

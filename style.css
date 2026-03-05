@@ -554,7 +554,13 @@ textarea { resize: vertical; min-height: 72px; }
   .status { border-left: none; border-top: 1px solid var(--border); padding-left: 0; padding-top: 10px; min-width: auto; }
   .tables-stage { height: auto; overflow: visible; padding: 14px; }
   #spotsGrid { position: static; display: grid; grid-template-columns: 1fr; gap: 14px; }
-  .spot { position: relative; transform: none; margin: 0 auto; }
+  .spot {
+    position: relative;
+    left: auto !important;
+    top: auto !important;
+    transform: none;
+    margin: 0 auto;
+  }
 }
 
 @media (max-width: 760px) {
