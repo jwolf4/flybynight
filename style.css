@@ -15,9 +15,9 @@
   --header-height: 110px; /* JS will update this */
   --stage-height: 260px;
   --stage-sprite-scale: 1.08;
-  --stage-sprite-max-width: 500px;
+  --stage-sprite-max-width: 900px;
   --stage-sprite-y: 56%;
-  --stage-video-width: min(72vw, calc(var(--stage-sprite-max-width) * 0.78));
+  --stage-video-width: clamp(260px, 56vw, calc(var(--stage-sprite-max-width) * 0.64));
   --stage-video-top: 62%;
 
   /* Table sizing */
@@ -62,7 +62,8 @@ body {
 .header {
   position: relative;
   z-index: 10;
-  max-width: 1200px;
+  width: calc(100% - 32px);
+  max-width: 1168px;
   margin: 0 auto;
   padding: 14px 16px 12px;
   border: 1px solid var(--border);
@@ -173,9 +174,10 @@ body {
   left: 50%;
   top: var(--stage-video-top);
   width: var(--stage-video-width);
-  aspect-ratio: 16 / 9;
+  height: auto;
+  padding: 12px;
   transform: translate(-50%, -50%);
-  border: 1px solid var(--border);
+  border: none;
   box-shadow: 0 0 18px rgba(0,255,0,0.15);
   background: rgba(0,0,0,0.75);
   display: grid;
@@ -228,7 +230,11 @@ body {
   border: 1px solid var(--border);
   box-shadow: 0 0 12px var(--shadow);
   overflow: hidden;
-  background: rgba(0,0,0,0.65);
+  background-color: rgba(0,0,0,0.65);
+  background-image: linear-gradient(rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.35)), url("background.png");
+  background-repeat: repeat;
+  background-size: auto, 96px auto;
+  background-position: top left;
 }
 
 #spotsGrid {
