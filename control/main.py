@@ -88,6 +88,30 @@ async def shutdown():
         await r.close()
         r = None
 
+CREATE_THREAD_LUA = r"""
+local spotKey    = KEYS[1]
+local metaKey    = KEYS[2]
+local postsKey   = KEYS[3]
+local counterKey = KEYS[4]
+
+local threadId = ARGV[1]
+local ttl      = tonumber(ARGV[2])
+local metaJson = ARGV[3]
+local opJson   = ARGV[4]
+
+if redis.call("EXISTS", spotKey) == 1 then
+  return 0
+end
+
+redis.call("SET", spotKey, threadId, "EX", ttl)
+redis.call("SET", metaKey, metaJson, "EX", ttl)
+redis.call("DEL", postsKey)
+redis.call("LPUSH", postsKey, opJson)
+redis.call("EXPIRE", postsKey, ttl)
+redis.call("SET", counterKey, 1, "EX", ttl)
+
+return 1
+"""
 
 # ----------------------------
 # Utilities
@@ -186,16 +210,12 @@ async def get_spots(limit_posts: int = 60):
 @app.post("/api/spots/{spot_id}/thread")
 async def create_thread_in_spot(spot_id: int, payload: Dict[str, Any]):
     """
-    Create a new thread in a spot.
+    Create a new thread in a spot atomically.
     If spot is occupied, we reject with 409 (UI can show "occupied").
     payload: { title, name, comment, imageDataUrl? }
     """
     assert r is not None
     _validate_spot_id(spot_id)
-
-    existing = await _get_thread_id_for_spot(spot_id)
-    if existing:
-        raise HTTPException(status_code=409, detail="spot occupied")
 
     title = str(payload.get("title", "")).strip()[:80]
     name = str(payload.get("name", "Anonymous")).strip()[:40] or "Anonymous"
@@ -208,7 +228,6 @@ async def create_thread_in_spot(spot_id: int, payload: Dict[str, Any]):
     image_data_url = payload.get("imageDataUrl")
     if image_data_url is not None:
         image_data_url = str(image_data_url)
-        # basic guard; still should move to file uploads ASAP
         if len(image_data_url) > 2_000_000:  # ~2MB of text
             raise HTTPException(status_code=413, detail="image too large")
 
@@ -223,10 +242,9 @@ async def create_thread_in_spot(spot_id: int, payload: Dict[str, Any]):
         "updatedAt": now,
     }
 
-    # Make OP post number 1
-    op_no = 1
+    # OP is post number 1
     op_post = {
-        "id": op_no,  # numeric for >>123 quoting
+        "id": 1,  # numeric for >>123 quoting
         "name": name,
         "comment": comment,
         "createdAt": now,
@@ -234,23 +252,24 @@ async def create_thread_in_spot(spot_id: int, payload: Dict[str, Any]):
     if image_data_url:
         op_post["imageDataUrl"] = image_data_url
 
-    pipe = r.pipeline()
+    meta_json = json.dumps(meta)
+    op_json = json.dumps(op_post)
 
-    # Spot -> thread mapping
-    pipe.set(k_spot_thread_id(spot_id), thread_id, ex=THREAD_TTL_SECONDS)
+    ok = await r.eval(
+        CREATE_THREAD_LUA,
+        numkeys=4,
+        keys=[
+            k_spot_thread_id(spot_id),
+            k_thread_meta(thread_id),
+            k_thread_posts(thread_id),
+            k_thread_post_counter(thread_id),
+        ],
+        args=[thread_id, THREAD_TTL_SECONDS, meta_json, op_json],
+    )
 
-    # Thread meta + posts
-    pipe.set(k_thread_meta(thread_id), json.dumps(meta), ex=THREAD_TTL_SECONDS)
-    pipe.delete(k_thread_posts(thread_id))
-    pipe.lpush(k_thread_posts(thread_id), json.dumps(op_post))
-    pipe.expire(k_thread_posts(thread_id), THREAD_TTL_SECONDS)
+    if int(ok) != 1:
+        raise HTTPException(status_code=409, detail="spot occupied")
 
-    # Counter initialized to 1 (OP)
-    pipe.set(k_thread_post_counter(thread_id), op_no, ex=THREAD_TTL_SECONDS)
-
-    await pipe.execute()
-
-    # Return thread in UI shape
     return {"spotId": spot_id, "thread": await _load_thread(thread_id, limit_posts=200)}
 
 
