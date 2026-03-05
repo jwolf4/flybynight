@@ -1,5 +1,5 @@
 ﻿/**
- * Fly By Night â€” 5 thread-spots w/ preview + expanded thread view (in-memory only)
+ * Fly By Night - 5 thread-spots w/ preview + expanded thread view (in-memory only)
  */
 
 const REFRESH_SECONDS = 10;
@@ -237,7 +237,7 @@ async function fileToDataUrl(file) {
 function snippet(text, max = 140) {
   const s = String(text ?? "").trim().replace(/\s+/g, " ");
   if (s.length <= max) return s;
-  return s.slice(0, max - 1) + "â€¦";
+  return s.slice(0, max - 1) + "...";
 }
 
 function defaultTitleForThread(spotId) {
@@ -442,11 +442,11 @@ function renderSpot(spot, { hidden, expanded }) {
             <div class="thread-full-title">${escapeHtml(spot.thread?.title ?? defaultTitleForThread(spot.spotId))}</div>
             <div class="thread-full-meta">${
               spot.thread
-                ? `#${spot.thread.threadId} â€” ${escapeHtml(spot.thread.createdAt)} â€” posts ${spot.thread.posts.length}`
+                ? `#${spot.thread.threadId} - ${escapeHtml(spot.thread.createdAt)} - posts ${spot.thread.posts.length}`
                 : `EMPTY`
             }</div>
           </div>
-          <div class="thread-back" data-action="back-to-tables">â† back to tables</div>
+          <div class="thread-back" data-action="back-to-tables"><- back to tables</div>
         </div>
 
         <div class="divider"></div>
@@ -808,7 +808,7 @@ setInterval(async () => {
       try { hls.destroy(); } catch {}
       hls = null;
     }
-    // Donâ€™t keep old sources around
+    // Don't keep old sources around
     video.removeAttribute("src");
     video.load();
   };
@@ -820,7 +820,7 @@ setInterval(async () => {
 
   const startNative = async () => {
     cleanup();
-    setStatus("live: connectingâ€¦", true);
+    setStatus("live: connecting...", true);
 
     video.src = bust();
     try {
@@ -834,14 +834,14 @@ setInterval(async () => {
 
     // If it errors (stream offline), retry
     video.onerror = () => {
-      setStatus("offline (retryingâ€¦)", true);
+      setStatus("offline (retrying...)", true);
       scheduleRetry(4000);
     };
   };
 
   const startHlsJs = () => {
     cleanup();
-    setStatus("live: connectingâ€¦", true);
+    setStatus("live: connecting...", true);
 
     hls = new Hls({
       // Low-latency not required for you; keep it stable
@@ -853,7 +853,7 @@ setInterval(async () => {
     hls.on(Hls.Events.ERROR, (_evt, data) => {
       // Network/media errors: treat as offline and retry
       if (data && data.fatal) {
-        setStatus("offline (retryingâ€¦)", true);
+        setStatus("offline (retrying...)", true);
         cleanup();
         scheduleRetry(4000);
       }
@@ -874,8 +874,8 @@ setInterval(async () => {
   };
 
   const start = async () => {
-    // Quick â€œis there a stream?â€ probe:
-    // If 404, donâ€™t spin up hls.js, just show offline and retry.
+    // Quick "is there a stream?" probe:
+    // If 404, don't spin up hls.js, just show offline and retry.
     setStatus("checking...", true);
     if (!(await selectPlayableHlsUrl())) {
       setStatus("offline", true);
