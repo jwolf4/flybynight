@@ -233,7 +233,7 @@ body {
   background-color: rgba(0,0,0,0.65);
   background-image: linear-gradient(rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.35)), url("background.png");
   background-repeat: repeat;
-  background-size: auto, 96px auto;
+  background-size: auto, 600px auto;
   background-position: top left;
 }
 
