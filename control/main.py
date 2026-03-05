@@ -256,16 +256,17 @@ async def create_thread_in_spot(spot_id: int, payload: Dict[str, Any]):
     op_json = json.dumps(op_post)
 
     ok = await r.eval(
-        CREATE_THREAD_LUA,
-        numkeys=4,
-        keys=[
-            k_spot_thread_id(spot_id),
-            k_thread_meta(thread_id),
-            k_thread_posts(thread_id),
-            k_thread_post_counter(thread_id),
-        ],
-        args=[thread_id, THREAD_TTL_SECONDS, meta_json, op_json],
-    )
+    CREATE_THREAD_LUA,
+    4,
+    k_spot_thread_id(spot_id),
+    k_thread_meta(thread_id),
+    k_thread_posts(thread_id),
+    k_thread_post_counter(thread_id),
+    thread_id,
+    str(THREAD_TTL_SECONDS),
+    meta_json,
+    op_json,
+)
 
     if int(ok) != 1:
         raise HTTPException(status_code=409, detail="spot occupied")
