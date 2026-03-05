@@ -8,6 +8,91 @@ const STORAGE_KEY = "flybynight.thread_state.v1";
 const STORAGE_DAY_KEY = "flybynight.thread_state.day";
 const DAY_ROLLOVER_CHECK_MS = 60 * 1000;
 
+// --- API wiring (server-backed threads) ---
+const API_BASE = "/api"; // nginx should route this to your control service
+
+function fmtIsoLikeUi(msOrIso) {
+  // UI expects "YYYY-MM-DD HH:MM:SSZ"
+  if (typeof msOrIso === "number") {
+    const d = new Date(msOrIso);
+    return d.toISOString().replace("T", " ").slice(0, 19) + "Z";
+  }
+  // If server already returns a string, keep it
+  return String(msOrIso ?? "");
+}
+
+function normalizeThreadFromApi(thread) {
+  if (!thread) return null;
+  return {
+    threadId: Number(thread.threadId),
+    createdAt: fmtIsoLikeUi(thread.createdAt),
+    title: String(thread.title ?? ""),
+    posts: Array.isArray(thread.posts)
+      ? thread.posts.map((p) => ({
+          id: Number(p.id),
+          name: String(p.name ?? "Anonymous"),
+          comment: String(p.comment ?? ""),
+          createdAt: fmtIsoLikeUi(p.createdAt),
+          imageDataUrl: p.imageDataUrl ? String(p.imageDataUrl) : null,
+        }))
+      : [],
+  };
+}
+
+async function apiFetch(path, { method = "GET", body = null } = {}) {
+  const url = `${API_BASE}${path}${path.includes("?") ? "&" : "?"}_=${Date.now()}`;
+
+  const init = { method, cache: "no-store", headers: {} };
+  if (body != null) {
+    init.headers["Content-Type"] = "application/json";
+    init.body = JSON.stringify(body);
+  }
+
+  const r = await fetch(url, init);
+  const text = await r.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
+
+  if (!r.ok) {
+    const msg = (data && (data.detail || data.msg)) || `HTTP ${r.status}`;
+    const err = new Error(msg);
+    err.status = r.status;
+    err.data = data;
+    throw err;
+  }
+
+  return data;
+}
+
+async function refreshFromServer() {
+  // Expecting: [{ spotId, thread: { threadId, createdAt(ms), title, posts:[...] } }, ...]
+  const serverSpots = await apiFetch(`/spots`, { method: "GET" });
+
+  const normalized = Array.from({ length: SPOT_COUNT }, (_, i) => {
+    const spotId = i + 1;
+    const incoming = Array.isArray(serverSpots) ? serverSpots.find((s) => Number(s?.spotId) === spotId) : null;
+    return {
+      spotId,
+      thread: normalizeThreadFromApi(incoming?.thread ?? null),
+    };
+  });
+
+  spots = normalized;
+
+  // Keep these sane in case any UI code still relies on them (quoting uses post ids).
+  const allThreadIds = spots.map((s) => s.thread?.threadId).filter(Number.isFinite);
+  const allPostIds = spots
+    .flatMap((s) => (s.thread?.posts ?? []).map((p) => p.id))
+    .filter(Number.isFinite);
+
+  nextThreadId = (allThreadIds.length ? Math.max(...allThreadIds) : 0) + 1;
+  nextPostId = (allPostIds.length ? Math.max(...allPostIds) : 99) + 1;
+}
+
 let spots = Array.from({ length: SPOT_COUNT }, (_, i) => ({
   spotId: i + 1,
   thread: null, // { threadId, createdAt, title, posts: Post[] }
@@ -242,33 +327,31 @@ function isUserTypingIn(container) {
   return false;
 }
 
-/* ---- Mutations ---- */
+/* ---- Mutations (server-backed) ---- */
 
 async function createThreadInSpot(spotId, { title, name, comment, imageFile }) {
+  // If there's already a thread locally, don't try.
   const spot = spots.find((s) => s.spotId === spotId);
   if (!spot || spot.thread) return;
 
   const imageDataUrl = await fileToDataUrl(imageFile);
 
-  const threadId = nextThreadId++;
-  const createdAt = nowIso();
+  try {
+    await apiFetch(`/spots/${spotId}/thread`, {
+      method: "POST",
+      body: {
+        title: title?.trim() || defaultTitleForThread(spotId),
+        name: name?.trim() || "Anonymous",
+        comment: comment.trim(),
+        imageDataUrl,
+      },
+    });
+  } catch (e) {
+    // Typical: 409 Conflict if already occupied by someone else
+    alert(e?.message || "Failed to create thread.");
+  }
 
-  const opPost = {
-    id: nextPostId++,
-    name: name?.trim() || "Anonymous",
-    comment: comment.trim(),
-    createdAt,
-    imageDataUrl,
-  };
-
-  spot.thread = {
-    threadId,
-    createdAt,
-    title: title?.trim() || defaultTitleForThread(spotId),
-    posts: [opPost],
-  };
-
-  saveThreadState();
+  await refreshFromServer();
 }
 
 async function addReplyToSpotThread(spotId, { name, comment, imageFile }) {
@@ -277,24 +360,31 @@ async function addReplyToSpotThread(spotId, { name, comment, imageFile }) {
 
   const imageDataUrl = await fileToDataUrl(imageFile);
 
-  const post = {
-    id: nextPostId++,
-    name: name?.trim() || "Anonymous",
-    comment: comment.trim(),
-    createdAt: nowIso(),
-    imageDataUrl,
-  };
+  try {
+    await apiFetch(`/spots/${spotId}/reply`, {
+      method: "POST",
+      body: {
+        name: name?.trim() || "Anonymous",
+        comment: comment.trim(),
+        imageDataUrl,
+      },
+    });
+  } catch (e) {
+    alert(e?.message || "Failed to post reply.");
+  }
 
-  spot.thread.posts.push(post);
-  saveThreadState();
+  await refreshFromServer();
 }
 
-function deleteThreadInSpot(spotId) {
-  const spot = spots.find((s) => s.spotId === spotId);
-  if (!spot) return;
-  spot.thread = null;
+async function deleteThreadInSpot(spotId) {
+  try {
+    await apiFetch(`/spots/${spotId}/thread`, { method: "DELETE" });
+  } catch (e) {
+    alert(e?.message || "Failed to delete thread.");
+  }
+
   if (expandedSpotId === spotId) expandedSpotId = null;
-  saveThreadState();
+  await refreshFromServer();
 }
 
 /* ---- Rendering ---- */
@@ -601,30 +691,24 @@ if (el.backToTablesTop) {
 tickClock();
 setInterval(tickClock, 1000);
 
-loadThreadState();
-render();
+refreshFromServer()
+  .catch((e) => console.warn("Failed initial refresh:", e))
+  .finally(() => render());
 
 // IMPORTANT: don't erase in-progress typing or selected files on refresh tick
-setInterval(() => {
+setInterval(async () => {
   if (hasSelectedFile(el.spotsGrid)) return;
   if (isUserTypingIn(el.spotsGrid)) return;
-  if (ensureCurrentDayStorage()) {
-    spots = Array.from({ length: SPOT_COUNT }, (_, i) => ({ spotId: i + 1, thread: null }));
-    nextThreadId = 1;
-    nextPostId = 100;
-    expandedSpotId = null;
+
+  try {
+    await refreshFromServer();
+  } catch (e) {
+    console.warn("Refresh failed:", e);
+    // Keep current UI state if refresh fails.
   }
+
   render();
 }, REFRESH_SECONDS * 1000);
-
-setInterval(() => {
-  if (!ensureCurrentDayStorage()) return;
-  spots = Array.from({ length: SPOT_COUNT }, (_, i) => ({ spotId: i + 1, thread: null }));
-  nextThreadId = 1;
-  nextPostId = 100;
-  expandedSpotId = null;
-  render();
-}, DAY_ROLLOVER_CHECK_MS);
 
 (() => {
   const HLS_CANDIDATES = Array.from(new Set([
