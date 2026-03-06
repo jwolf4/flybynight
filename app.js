@@ -716,73 +716,181 @@ setInterval(async () => {
     `${location.protocol}//${location.hostname}:8088/live/live.m3u8`,
     "https://flybynight.channel/live/live.m3u8",
   ]));
-  const STALE_PROGRESS_TIMEOUT_MS = 15000;
-  const STALE_CHECK_INTERVAL_MS = 3000;
+
+  const PUBLISH_URL = `webrtc://${location.host}/live/live`;
+  const LOCK_STATUS_URL = `${location.protocol}//${location.host}/control/status`;
+  const STOP_STREAM_URL = `${location.protocol}//${location.host}/control/stop`;
+  const LOCK_POLL_MS = 1500;
+  const PLAYBACK_RETRY_MS = 1800;
+  const STALE_PROGRESS_TIMEOUT_MS = 12000;
+  const STALE_CHECK_INTERVAL_MS = 2000;
 
   const video = document.getElementById("live-video");
   const statusEl = document.getElementById("live-status");
   const overlay = document.getElementById("live-overlay");
+  const startBtn = document.getElementById("btnStartStream");
+  const stopBtn = document.getElementById("btnStopStream");
+  const pubStatus = document.getElementById("pubStatus");
+  const localPreview = document.getElementById("local-preview");
 
-  if (!video || !statusEl || !overlay) return;
+  if (!video || !statusEl || !overlay || !startBtn || !stopBtn || !pubStatus || !localPreview) return;
 
   let hls = null;
+  let publisher = null;
+  let liveKnown = false;
+  let uiState = "offline"; // offline | starting | live | stopping | error
+  let activeHlsUrl = HLS_CANDIDATES[0];
+  let pollInFlight = false;
   let retryTimer = null;
   let staleTimer = null;
   let lastProgressAt = 0;
   let lastCurrentTime = 0;
-  let activeHlsUrl = HLS_CANDIDATES[0];
 
-  const setStatus = (text, showOverlay) => {
-    statusEl.textContent = text;
+  function setState(nextState, detail = "") {
+    uiState = nextState;
+    statusEl.textContent = detail ? `${nextState}: ${detail}` : nextState;
+    refreshControls();
+  }
+
+  function setPublisherStatus(text) {
+    pubStatus.textContent = text || "";
+  }
+
+  function stopTracks(stream) {
+    if (!stream) return;
+    for (const track of stream.getTracks?.() ?? []) {
+      try { track.stop(); } catch {}
+    }
+  }
+
+  // Streamer self-preview is always local getUserMedia/publisher media, never HLS playback.
+  function setLocalPreviewStream(stream) {
+    const prev = localPreview.srcObject;
+    if (prev && prev !== stream) stopTracks(prev);
+
+    localPreview.srcObject = stream || null;
+    localPreview.classList.toggle("hidden", !stream);
+    if (stream) localPreview.play().catch(() => {});
+    refreshControls();
+  }
+
+  function clearLocalPreview() {
+    try { localPreview.pause(); } catch {}
+    stopTracks(localPreview.srcObject);
+    localPreview.srcObject = null;
+    localPreview.classList.add("hidden");
+    refreshControls();
+  }
+
+  function stopStaleWatch() {
+    if (!staleTimer) return;
+    clearInterval(staleTimer);
+    staleTimer = null;
+  }
+
+  function markPlaybackProgress() {
+    lastProgressAt = Date.now();
+    lastCurrentTime = video.currentTime || 0;
+  }
+
+  function resetPlaybackElement() {
+    video.onerror = null;
+    try { video.pause(); } catch {}
+    video.srcObject = null;
+    video.removeAttribute("src");
+    video.load();
+  }
+
+  // Aggressive teardown to prevent stale replay when stream is dead/stopped.
+  function teardownPlayback() {
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+    stopStaleWatch();
+    if (hls) {
+      try { hls.stopLoad(); } catch {}
+      try { hls.detachMedia(); } catch {}
+      try { hls.destroy(); } catch {}
+      hls = null;
+    }
+    resetPlaybackElement();
+  }
+
+  function refreshControls() {
+    const hasLocalPreview = !!localPreview.srcObject;
+    const canStart = !liveKnown && !publisher && uiState !== "starting" && uiState !== "stopping";
+    const canStop = !!publisher || uiState === "starting" || uiState === "stopping";
+    const showPlayback = liveKnown && !hasLocalPreview;
+    const showOverlay = hasLocalPreview || !showPlayback || uiState !== "live";
+
+    startBtn.classList.toggle("hidden", !canStart);
+    startBtn.disabled = !canStart;
+
+    stopBtn.classList.toggle("hidden", !canStop);
+    stopBtn.disabled = uiState === "stopping" || (!publisher && uiState !== "starting");
+
     overlay.classList.toggle("hidden", !showOverlay);
-    video.classList.toggle("stream-hidden", showOverlay);
-  };
+    video.classList.toggle("stream-hidden", !showPlayback);
+  }
+
+  async function fetchLiveLock() {
+    const r = await fetch(`${LOCK_STATUS_URL}?_=${Date.now()}`, { cache: "no-store" });
+    if (!r.ok) throw new Error(`lock status ${r.status}`);
+    const data = await r.json();
+    return !!data?.live;
+  }
+
+  async function sendStopSignal() {
+    try {
+      await fetch(`${STOP_STREAM_URL}?_=${Date.now()}`, {
+        method: "POST",
+        cache: "no-store",
+        keepalive: true,
+      });
+    } catch {}
+  }
+
+  function schedulePlaybackRetry(ms = PLAYBACK_RETRY_MS) {
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      ensureViewerPlayback();
+    }, ms);
+  }
 
   const bust = (url = activeHlsUrl) => `${url}${url.includes("?") ? "&" : "?"}_=${Date.now()}`;
 
-  const selectPlayableHlsUrl = async () => {
+  async function selectPlayableHlsUrl() {
     for (const candidate of HLS_CANDIDATES) {
       try {
         const r = await fetch(bust(candidate), { method: "GET", cache: "no-store" });
         if (!r.ok) continue;
         activeHlsUrl = candidate;
         return true;
-      } catch {
-        // Try next candidate URL.
-      }
+      } catch {}
     }
     return false;
-  };
+  }
 
-  const stopStaleWatch = () => {
-    if (staleTimer) {
-      clearInterval(staleTimer);
-      staleTimer = null;
-    }
-  };
+  function handleStalePlayback() {
+    if (!liveKnown || publisher) return;
+    teardownPlayback();
+    setState("starting", "waiting for HLS");
+    schedulePlaybackRetry();
+  }
 
-  const markPlaybackProgress = () => {
-    lastProgressAt = Date.now();
-    lastCurrentTime = video.currentTime || 0;
-  };
-
-  const handleStaleStream = () => {
-    setStatus("offline (stale stream, retrying...)", true);
-    cleanup();
-    scheduleRetry(2000);
-  };
-
-  const startStaleWatch = () => {
+  function startStaleWatch() {
     stopStaleWatch();
     markPlaybackProgress();
+
     staleTimer = setInterval(() => {
       const now = Date.now();
       const current = video.currentTime || 0;
-
       const hasFutureData = video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA;
       const likelyUserPaused = video.paused && hasFutureData && !video.ended;
+
       if (likelyUserPaused) {
-        // User likely paused with buffered media available; don't force retries.
         markPlaybackProgress();
         return;
       }
@@ -793,240 +901,237 @@ setInterval(async () => {
       }
 
       if (now - lastProgressAt >= STALE_PROGRESS_TIMEOUT_MS) {
-        handleStaleStream();
+        handleStalePlayback();
       }
     }, STALE_CHECK_INTERVAL_MS);
-  };
+  }
 
-  const cleanup = () => {
-    if (retryTimer) {
-      clearTimeout(retryTimer);
-      retryTimer = null;
-    }
-    stopStaleWatch();
-    if (hls) {
-      try { hls.destroy(); } catch {}
-      hls = null;
-    }
-    // Don't keep old sources around
-    video.removeAttribute("src");
-    video.load();
-  };
+  async function startNativePlayback() {
+    teardownPlayback();
+    video.src = bust(activeHlsUrl);
 
-  const scheduleRetry = (ms = 4000) => {
-    if (retryTimer) clearTimeout(retryTimer);
-    retryTimer = setTimeout(() => start(), ms);
-  };
+    video.onerror = () => {
+      if (!liveKnown || publisher) return;
+      teardownPlayback();
+      setState("starting", "waiting for HLS");
+      schedulePlaybackRetry();
+    };
 
-  const startNative = async () => {
-    cleanup();
-    setStatus("live: connecting...", true);
-
-    video.src = bust();
     try {
       await video.play();
-      setStatus("live", false);
+      setState("live");
       startStaleWatch();
     } catch {
-      // Autoplay might be blocked; keep overlay off once data flows
-      setStatus("live (click to play)", true);
+      setState("live", "click to play");
     }
+  }
 
-    // If it errors (stream offline), retry
-    video.onerror = () => {
-      setStatus("offline (retrying...)", true);
-      scheduleRetry(4000);
-    };
-  };
-
-  const startHlsJs = () => {
-    cleanup();
-    setStatus("live: connecting...", true);
+  function startHlsPlayback() {
+    teardownPlayback();
 
     hls = new Hls({
-      // Low-latency not required for you; keep it stable
       enableWorker: true,
       lowLatencyMode: false,
-      backBufferLength: 30,
+      manifestLoadingMaxRetry: 2,
+      levelLoadingMaxRetry: 2,
+      fragLoadingMaxRetry: 2,
+      manifestLoadingRetryDelay: 500,
+      levelLoadingRetryDelay: 500,
+      fragLoadingRetryDelay: 500,
+      backBufferLength: 0,
+      maxBufferLength: 8,
     });
 
     hls.on(Hls.Events.ERROR, (_evt, data) => {
-      // Network/media errors: treat as offline and retry
-      if (data && data.fatal) {
-        setStatus("offline (retrying...)", true);
-        cleanup();
-        scheduleRetry(4000);
-      }
+      if (!data?.fatal || !liveKnown || publisher) return;
+      teardownPlayback();
+      setState("starting", "waiting for HLS");
+      schedulePlaybackRetry();
     });
 
     hls.on(Hls.Events.MANIFEST_PARSED, async () => {
       try {
         await video.play();
-        setStatus("live", false);
+        setState("live");
         startStaleWatch();
       } catch {
-        setStatus("live (click to play)", true);
+        setState("live", "click to play");
       }
     });
 
-    hls.loadSource(bust());
+    hls.loadSource(bust(activeHlsUrl));
     hls.attachMedia(video);
-  };
+  }
 
-  const start = async () => {
-    // Quick "is there a stream?" probe:
-    // If 404, don't spin up hls.js, just show offline and retry.
-    setStatus("checking...", true);
-    if (!(await selectPlayableHlsUrl())) {
-      setStatus("offline", true);
-      scheduleRetry(4000);
+  async function ensureViewerPlayback() {
+    // HLS playback is viewer/live playback only. Streamers use local preview.
+    if (!liveKnown || publisher || localPreview.srcObject) {
+      teardownPlayback();
+      if (!publisher && !liveKnown && uiState !== "stopping") {
+        setState("offline");
+      }
       return;
     }
 
-    // Choose native HLS where available (Safari), otherwise hls.js
-    if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      startNative();
-    } else if (window.Hls && window.Hls.isSupported()) {
-      startHlsJs();
-    } else {
-      setStatus("HLS not supported in this browser", true);
+    setState("starting");
+    const found = await selectPlayableHlsUrl();
+    if (!found) {
+      setState("starting", "waiting for HLS");
+      schedulePlaybackRetry();
+      return;
     }
-  };
 
-  // Start now
-  start();
+    if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      await startNativePlayback();
+      return;
+    }
+
+    if (window.Hls && window.Hls.isSupported()) {
+      startHlsPlayback();
+      return;
+    }
+
+    setState("error", "HLS unsupported");
+  }
+
+  async function syncLiveStatus(force = false) {
+    if (pollInFlight && !force) return;
+    pollInFlight = true;
+    try {
+      const serverLive = await fetchLiveLock();
+      liveKnown = serverLive || !!publisher;
+
+      if (!liveKnown) {
+        teardownPlayback();
+        if (!publisher && uiState !== "stopping") {
+          setState("offline");
+          setPublisherStatus("Offline.");
+        }
+      } else if (!publisher) {
+        await ensureViewerPlayback();
+        setPublisherStatus("Live now. Viewing only.");
+      } else {
+        setState("live");
+        setPublisherStatus("Live. Local preview is direct camera/mic.");
+      }
+    } catch {
+      if (!publisher) {
+        setState("error", "status check failed");
+        setPublisherStatus("Cannot verify live status.");
+      }
+    } finally {
+      pollInFlight = false;
+      refreshControls();
+    }
+  }
+
+  async function startPublishing() {
+    if (publisher || uiState === "starting" || uiState === "stopping") return;
+
+    setState("starting");
+    setPublisherStatus("Requesting camera/mic...");
+
+    try {
+      const serverLive = await fetchLiveLock();
+      if (serverLive) {
+        liveKnown = true;
+        setState("offline");
+        setPublisherStatus("Another client is live.");
+        await ensureViewerPlayback();
+        return;
+      }
+    } catch {
+      setState("error", "status check failed");
+      setPublisherStatus("Cannot verify live status.");
+      return;
+    }
+
+    let previewStream = null;
+    try {
+      // Immediate local preview for the streamer, independent from HLS.
+      previewStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      setLocalPreviewStream(previewStream);
+
+      setPublisherStatus("Starting publish transport...");
+      publisher = new SrsRtcPublisherAsync();
+      await publisher.publish(PUBLISH_URL);
+
+      const publishStream = publisher.stream || previewStream;
+      if (publishStream !== previewStream) stopTracks(previewStream);
+      setLocalPreviewStream(publishStream);
+
+      liveKnown = true;
+      teardownPlayback();
+      setState("live");
+      setPublisherStatus("Live. Local preview is direct camera/mic.");
+    } catch (e) {
+      console.error(e);
+      try { await publisher?.close(); } catch {}
+      publisher = null;
+      clearLocalPreview();
+      liveKnown = false;
+      setState("error", "start failed");
+      setPublisherStatus(`Failed to start: ${e?.message || e}`);
+      await syncLiveStatus(true);
+    }
+  }
+
+  async function stopPublishing({ silent = false, fromUnload = false } = {}) {
+    if (uiState === "stopping") return;
+
+    setState("stopping");
+    if (!silent) setPublisherStatus("Stopping stream...");
+
+    const closing = publisher;
+    publisher = null;
+
+    try {
+      await closing?.close();
+    } catch (e) {
+      if (!silent) console.warn("stop error", e);
+    }
+
+    clearLocalPreview();
+    teardownPlayback();
+    liveKnown = false;
+
+    if (!fromUnload) await sendStopSignal();
+    await syncLiveStatus(true);
+
+    if (!silent) setPublisherStatus("Stopped.");
+    setState("offline");
+  }
+
+  startBtn.addEventListener("click", () => startPublishing());
+  stopBtn.addEventListener("click", () => stopPublishing());
 
   video.addEventListener("timeupdate", markPlaybackProgress);
   video.addEventListener("playing", () => {
     markPlaybackProgress();
     if (!staleTimer) startStaleWatch();
   });
-  video.addEventListener("ended", handleStaleStream);
+  video.addEventListener("ended", handleStalePlayback);
 
-  // If tab returns to foreground, refresh (helps with your sliding window)
+  // Best-effort immediate unlock for abrupt tab close, plus local teardown.
+  const unloadHandler = () => {
+    try {
+      navigator.sendBeacon(STOP_STREAM_URL, "{}");
+    } catch {}
+    try { publisher?.close?.(); } catch {}
+    clearLocalPreview();
+    teardownPlayback();
+  };
+  window.addEventListener("pagehide", unloadHandler);
+  window.addEventListener("beforeunload", unloadHandler);
+
   document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) start();
-  });
-})();
-
-(() => {
-  const btn = document.getElementById("btnToggleStream");
-  const status = document.getElementById("pubStatus");
-  const preview = document.getElementById("pub-preview");
-  if (!btn || !status) return;
-
-  // SRS publish URL. Note: webrtc:// (SRS uses HTTPS signaling under the hood)
-  const PUBLISH_URL = `webrtc://${location.host}/live/live`;
-  const LOCK_STATUS_URL = `${location.protocol}//${location.host}/control/status`;
-  const LOCK_POLL_MS = 2000;
-
-  let publisher = null; // SRSPublisher from srs.sdk.js
-
-  function setState(on, msg) {
-    btn.textContent = on ? "Stop Streaming" : "Start Streaming";
-    status.textContent = msg || "";
-  }
-
-  function setPreview(stream) {
-    if (!preview) return;
-    preview.srcObject = stream || null;
-    preview.classList.toggle("hidden", !stream);
-    if (stream) preview.play().catch(() => {});
-  }
-
-  async function fetchLiveLock() {
-    const r = await fetch(`${LOCK_STATUS_URL}?_=${Date.now()}`, { cache: "no-store" });
-    if (!r.ok) throw new Error(`lock status ${r.status}`);
-    const data = await r.json();
-    return !!data?.live;
-  }
-
-  async function syncStartAvailability() {
-    if (publisher) {
-      btn.classList.remove("hidden");
-      btn.disabled = false;
-      return;
-    }
-
-    try {
-      const live = await fetchLiveLock();
-      if (live) {
-        btn.classList.add("hidden");
-        btn.disabled = true;
-        setState(false, "Live now. Viewing only.");
-      } else {
-        btn.classList.remove("hidden");
-        btn.disabled = false;
-        if (!status.textContent || status.textContent === "Live now. Viewing only.") {
-          setState(false, "Offline.");
-        }
-      }
-    } catch {
-      // Fail closed in UI, while hooks still enforce lock server-side.
-      btn.classList.add("hidden");
-      btn.disabled = true;
-      setState(false, "Checking stream status...");
-    }
-  }
-
-  async function start() {
-    try {
-      const live = await fetchLiveLock();
-      if (live) {
-        btn.classList.add("hidden");
-        btn.disabled = true;
-        setState(false, "Another client is live.");
-        return;
-      }
-    } catch {
-      setState(false, "Cannot verify live status.");
-      return;
-    }
-
-    btn.classList.remove("hidden");
-    btn.disabled = false;
-    setState(true, "Requesting camera/mic...");
-
-    try {
-      // Create publisher
-      publisher = new SrsRtcPublisherAsync();
-
-      // Ask for cam/mic and publish
-      await publisher.publish(PUBLISH_URL);
-
-      setPreview(publisher.stream || null);
-      setState(true, "Publishing. Stage playback may take a few seconds.");
-    } catch (e) {
-      console.error(e);
-      await stop(true);
-      setState(false, `Failed to start: ${e?.message || e}`);
-      await syncStartAvailability();
-    }
-  }
-
-  async function stop(silent) {
-    try {
-      if (publisher) {
-        // Close peer connection + stop tracks
-        await publisher.close();
-      }
-    } catch (e) {
-      if (!silent) console.warn("stop error", e);
-    } finally {
-      publisher = null;
-      setPreview(null);
-      if (!silent) setState(false, "Stopped.");
-      else setState(false, "");
-      await syncStartAvailability();
-    }
-  }
-
-  btn.addEventListener("click", async () => {
-    if (!publisher) await start();
-    else await stop(false);
+    if (!document.hidden) syncLiveStatus(true);
   });
 
-  setState(false, "Checking stream status...");
-  syncStartAvailability();
-  setInterval(syncStartAvailability, LOCK_POLL_MS);
+  setState("offline");
+  setPublisherStatus("Checking stream status...");
+  syncLiveStatus(true);
+  setInterval(() => {
+    syncLiveStatus();
+  }, LOCK_POLL_MS);
 })();
