@@ -27,7 +27,7 @@
   <div class="live-wrap">
     <div class="live-header">
       <div class="live-title">LIVE</div>
-      <div id="live-status" class="live-status">checking…</div>
+      <div id="live-status" class="live-status">offline</div>
     </div>
 
     <div class="live-video">
@@ -42,8 +42,11 @@
 
       <div id="live-overlay" class="live-overlay">
         <div class="live-overlay-inner">
-          <button id="btnToggleStream" class="btn">Start Streaming</button>
-          <video id="pub-preview" class="hidden" autoplay playsinline muted></video>
+          <div class="live-controls">
+            <button id="btnStartStream" class="btn" type="button">Start Streaming</button>
+            <button id="btnStopStream" class="btn btn-danger hidden" type="button">Stop Stream</button>
+          </div>
+          <video id="local-preview" class="hidden" autoplay playsinline muted></video>
           <div id="pubStatus" class="hint"></div>
         </div>
       </div>

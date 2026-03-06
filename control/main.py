@@ -21,6 +21,17 @@ lock = {
 def status():
     return {"live": lock["held"]}
 
+@app.post("/stop")
+def stop_stream():
+    """
+    Minimal explicit stop route to clear lock quickly when streamer clicks Stop
+    or closes the tab before webhook timing catches up.
+    """
+    lock["held"] = False
+    lock["publisher"] = None
+    lock["since"] = None
+    return {"ok": True}
+
 @app.post("/srs/on_publish")
 async def on_publish(req: Request):
     body = await req.json()
