@@ -320,6 +320,13 @@ body {
   text-shadow: 0 0 4px rgba(0, 0, 0, 0.95);
 }
 
+.desktop-icon-right-mid {
+  position: absolute;
+  right: 36px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
 .lounge-title {
   margin: 0 0 10px;
   text-shadow: 0 0 5px var(--fg), 0 0 10px var(--fg);
@@ -688,6 +695,11 @@ textarea { resize: vertical; min-height: 72px; }
     text-align: center;
   }
   .lounge-box { min-height: 560px; }
+  .desktop-icon-right-mid {
+    position: static;
+    transform: none;
+    margin-top: 18px;
+  }
   .desktop-icons {
     width: 100%;
     grid-template-columns: repeat(2, 1fr);
