@@ -743,6 +743,7 @@ setInterval(async () => {
   let pollInFlight = false;
   let retryTimer = null;
   let staleTimer = null;
+  let playbackMode = "none"; // none | native | hls
   let lastProgressAt = 0;
   let lastCurrentTime = 0;
 
@@ -814,6 +815,7 @@ setInterval(async () => {
       try { hls.destroy(); } catch {}
       hls = null;
     }
+    playbackMode = "none";
     resetPlaybackElement();
   }
 
@@ -908,6 +910,7 @@ setInterval(async () => {
 
   async function startNativePlayback() {
     teardownPlayback();
+    playbackMode = "native";
     video.src = bust(activeHlsUrl);
 
     video.onerror = () => {
@@ -928,6 +931,7 @@ setInterval(async () => {
 
   function startHlsPlayback() {
     teardownPlayback();
+    playbackMode = "hls";
 
     hls = new Hls({
       enableWorker: true,
@@ -972,6 +976,9 @@ setInterval(async () => {
       }
       return;
     }
+
+    // Avoid resetting a currently active/connecting playback session on every status poll.
+    if (playbackMode !== "none" || retryTimer) return;
 
     setState("starting");
     const found = await selectPlayableHlsUrl();
