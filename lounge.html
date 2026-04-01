@@ -23,28 +23,63 @@
   <main class="lounge-shell">
     <section class="lounge-box" aria-label="Lounge area">
       <div class="desktop-icons" aria-label="Desktop shortcuts">
-        <figure class="desktop-icon">
+        <button class="desktop-icon lounge-launcher" type="button" data-window-title="Literature">
           <img src="icons/bust_1.png" alt="Desktop icon 1" />
-          <figcaption>Literature</figcaption>
-        </figure>
-        <figure class="desktop-icon">
+          <span class="desktop-icon-label">Literature</span>
+        </button>
+        <button class="desktop-icon lounge-launcher" type="button" data-window-title="Junk">
           <img src="icons/bust_2.png" alt="Desktop icon 2" />
-          <figcaption>Junk</figcaption>
-        </figure>
-        <figure class="desktop-icon">
+          <span class="desktop-icon-label">Junk</span>
+        </button>
+        <button class="desktop-icon lounge-launcher" type="button" data-window-title="Annoncements">
           <img src="icons/bust_3.png" alt="Desktop icon 3" />
-          <figcaption>Annoncements</figcaption>
-        </figure>
-        <figure class="desktop-icon">
+          <span class="desktop-icon-label">Annoncements</span>
+        </button>
+        <button class="desktop-icon lounge-launcher" type="button" data-window-title="Mystic">
           <img src="icons/lamp.gif" alt="Desktop icon 4" />
-          <figcaption>Mystic</figcaption>
-        </figure>
+          <span class="desktop-icon-label">Mystic</span>
+        </button>
+        <button class="desktop-icon lounge-launcher" type="button" data-window-title="Bottle Keep">
+          <img src="icons/cutty_sark.png" alt="Bottle Keep icon" />
+          <span class="desktop-icon-label">Bottle Keep</span>
+        </button>
+        <button class="desktop-icon lounge-launcher" type="button" data-window-title="Scroll">
+          <img src="icons/scroll.gif" alt="Scroll icon" />
+          <span class="desktop-icon-label">Scroll</span>
+        </button>
       </div>
-      <figure class="desktop-icon desktop-icon-right-mid">
-        <img src="icons/cutty_sark.png" alt="Bottle Keep icon" />
-        <figcaption>Bottle Keep</figcaption>
-      </figure>
+      <div class="lounge-window-overlay" id="loungeWindowOverlay" hidden>
+        <section
+          class="lounge-window"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="loungeWindowTitle"
+        >
+          <header class="lounge-window-bar">
+            <h2 class="lounge-window-title" id="loungeWindowTitle">Desktop Window</h2>
+            <button
+              class="lounge-window-close"
+              id="loungeWindowClose"
+              type="button"
+              aria-label="Close window"
+            >
+              X
+            </button>
+          </header>
+          <div class="lounge-window-body" id="loungeWindowBody">
+            <p>
+              Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor
+              incididunt ut labore et dolore magna aliqua.
+            </p>
+            <p>
+              Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut
+              aliquip ex ea commodo consequat.
+            </p>
+          </div>
+        </section>
+      </div>
     </section>
   </main>
+  <script src="lounge.js"></script>
 </body>
 </html>
